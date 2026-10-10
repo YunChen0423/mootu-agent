@@ -1,3 +1,5 @@
+import { runAgent } from "./agent-engine.js";
+
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const state = { session: null, config: null, events: [], time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "mock", lastTranscriptKey: null };
@@ -16,25 +18,9 @@ async function load() {
   const status = await fetch("/api/status").then((r) => r.json()).catch(() => ({ mode: "mock" }));
   state.model = status.mode;
   $("#modelBadge").innerHTML = `<i></i>${status.mode === "deepseek" ? `DeepSeek · ${status.model}` : "本地规则 · 可演示"}`;
-  buildEvents();
+  state.events = runAgent({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration, config: state.config }).events;
   renderStatic();
   setTime(0);
-}
-
-function buildEvents() {
-  state.events = [
-    decision(0, "diverge", "observe", ["讨论尚未开始，暂不介入。"], [58, 42, 50], "等待讨论自然启动", "继续收集发言证据"),
-    decision(42, "diverge", "invite_quiet_member", ["C 尚未参与讨论。", "A 与 B 占据当前全部发言时间。"], [34, 46, 77], "低压力邀请 C", "30 秒后检查 C 是否开始参与", "C"),
-    decision(82, "diverge", "open_new_direction", ["近期方案都围绕封闭小空间。", "新想法增长速度下降。"], [61, 31, 67], "激活新的探索方向", "观察是否出现不同类型的方案"),
-    decision(116, "diverge", "observe", ["C 提出了“安静路线”的新方向。", "B 正在接续和扩展该想法。"], [79, 73, 88], "不介入，让讨论继续", "保持倾听，避免打断有效生成"),
-    decision(171, "converge", "prepare_convergence", ["已形成空间、路线、地图三个方向。", "近期新方向增长下降，剩余时间有限。"], [84, 82, 71], "建议从发散转向收敛", "展示候选方向并提示评价维度"),
-    decision(205, "converge", "advance_decision", ["成员已经开始比较隐私和成本。", "方案间仍缺少共同选择。"], [89, 76, 63], "推进方案比较", "总结共识与仍有分歧的维度"),
-    decision(246, "converge", "observe", ["成员已提出地图作为核心方案。", "另一成员明确认可组合方向。"], [93, 83, 91], "保持观察，等待自然确认", "记录阶段结果，不追加干预")
-  ];
-}
-
-function decision(time, stage, strategy, evidence, metrics, title, followUp, target = null) {
-  return { time, stage, strategy, evidence, metrics: { participation: metrics[0], diversity: metrics[1], flow: metrics[2] }, title, reason: evidence.join(" "), followUp, target };
 }
 
 function renderStatic() {
@@ -140,21 +126,10 @@ function loadImportedTranscript(lines, fileName) {
   state.session.participants = speakers.map((speaker, index) => ({ id: speaker, name: speaker, color: palette[index % palette.length] }));
   state.session.duration = Math.max(...lines.map((line) => line.end)) + 5;
   state.lastTranscriptKey = null;
-  buildImportedEvents();
+  state.events = runAgent({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration, config: state.config }).events;
   renderStatic();
   setTime(0);
   toast(`已载入 ${fileName} · ${lines.length} 条发言`);
-}
-
-function buildImportedEvents() {
-  const duration = state.session.duration;
-  state.events = [
-    decision(0, "diverge", "observe", ["逐字稿已载入，等待讨论开始。"], [50, 45, 50], "等待讨论自然启动", "继续收集发言证据"),
-    decision(Math.round(duration * 0.3), "diverge", "observe", ["正在累计发言分布与想法方向。"], [62, 55, 68], "保持观察", "等待更多上下文后再决定是否介入"),
-    decision(Math.round(duration * 0.55), "diverge", "open_new_direction", ["已到达讨论中段，需要检查是否仍有新方向。"], [70, 52, 64], "检查探索是否固着", "结合 DeepSeek 语义分析确认是否启发"),
-    decision(Math.round(duration * 0.75), "converge", "prepare_convergence", ["讨论进入后段，开始整理候选方向。"], [78, 73, 66], "准备收敛", "总结候选方案和评价维度"),
-    decision(Math.round(duration * 0.92), "converge", "observe", ["接近讨论结束，观察是否形成明确结果。"], [84, 76, 82], "等待自然确认", "记录结果或继续推进")
-  ];
 }
 
 function renderParticipation(time) {
@@ -266,14 +241,18 @@ $("#analyzeBtn").addEventListener("click", async () => {
   $("#analyzeBtn").disabled = true;
   $("#analyzeBtn").textContent = "分析中…";
   try {
-    const result = await fetch("/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ transcript: state.session.transcript }) }).then(async (r) => { if (!r.ok) throw new Error((await r.json()).error); return r.json(); });
-    if (result.analysis) toast(`DeepSeek 分析完成：${result.analysis.summary || "已更新语义判断"}`);
-    else toast("本地规则分析完成；配置 Key 后将启用 DeepSeek");
-    setTime(42);
+    const result = await fetch("/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration }) }).then(async (r) => { if (!r.ok) throw new Error((await r.json()).error); return r.json(); });
+    state.events = result.events;
+    renderStatic();
+    setTime(0);
+    toast(`${result.mode === "deepseek" ? "DeepSeek + 策略引擎" : "本地策略引擎"}分析完成：${result.analysis.summary}`);
   } catch (error) {
     if (state.model === "mock") {
-      toast("本地规则分析完成；本地启动并配置 Key 后可启用 DeepSeek");
-      setTime(42);
+      const local = runAgent({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration, config: state.config });
+      state.events = local.events;
+      renderStatic();
+      setTime(0);
+      toast(`本地策略引擎分析完成：${local.summary}`);
     } else {
       toast(`分析失败：${error.message}`);
     }

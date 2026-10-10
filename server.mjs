@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
+import { runAgent } from "./public/agent-engine.js";
 
 const root = join(process.cwd(), "public");
 const port = Number(process.env.PORT || 4173);
@@ -23,7 +24,7 @@ async function readBody(req) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 }
 
-async function analyzeWithDeepSeek(payload) {
+async function analyzeWithDeepSeek(payload, checkpoints) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) return null;
   const baseUrl = (process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com").replace(/\/$/, "");
@@ -41,11 +42,11 @@ async function analyzeWithDeepSeek(payload) {
       messages: [
         {
           role: "system",
-          content: `你是 MooTu 小组创意讨论促进 Agent 的语义分析器。只分析证据，不直接控制硬件。输出 JSON：{\"summary\":string,\"idea_clusters\":[string],\"recent_novelty\":\"high|medium|low\",\"flow_interpretation\":string,\"suggested_stage\":\"diverge|converge\",\"confidence\":number}。不得从视频或文本猜测生理状态。`
+          content: `你是 MooTu 小组创意讨论促进 Agent 的语义分析器。你只负责为给定检查点分析可观察的讨论证据，不直接控制硬件，也不输出隐藏推理过程。严格输出 JSON：{\"summary\":string,\"idea_clusters\":[string],\"windows\":[{\"time\":number,\"idea_diversity\":number,\"novelty\":\"high|medium|low\",\"flow_interpretation\":string,\"stage_recommendation\":\"diverge|converge\",\"evidence\":string}]}。idea_diversity 必须为 0 到 100。不得从视频或文本猜测生理或心理状态。`
         },
         {
           role: "user",
-          content: `请以 JSON 分析这段带说话人的创意讨论逐字稿：\n${JSON.stringify(payload.transcript)}`
+          content: `检查点（秒）：${JSON.stringify(checkpoints)}\n参与者：${JSON.stringify(payload.participants || [])}\n请以 JSON 分析这段带说话人的创意讨论逐字稿：\n${JSON.stringify(payload.transcript)}`
         }
       ]
     })
@@ -66,9 +67,23 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/api/analyze") {
       const payload = await readBody(req);
-      if (!Array.isArray(payload.transcript)) return json(res, 400, { error: "transcript 必须是数组" });
-      const analysis = await analyzeWithDeepSeek(payload);
-      return json(res, 200, { mode: analysis ? "deepseek" : "mock", analysis });
+      if (!Array.isArray(payload.transcript) || !payload.transcript.length) return json(res, 400, { error: "transcript 必须是非空数组" });
+      const config = JSON.parse(await readFile(join(root, "config/actions.json"), "utf8"));
+      const duration = Number(payload.duration) || Math.max(...payload.transcript.map((line) => Number(line.end) || 0));
+      const interval = Math.max(35, Math.min(55, Math.round(duration / 6)));
+      const checkpoints = [0];
+      for (let time = interval; time < duration; time += interval) checkpoints.push(time);
+      if (duration - checkpoints.at(-1) < interval / 2) checkpoints[checkpoints.length - 1] = duration;
+      else checkpoints.push(duration);
+      const semantic = await analyzeWithDeepSeek(payload, checkpoints);
+      const analysis = runAgent({
+        transcript: payload.transcript,
+        participants: payload.participants || [],
+        duration,
+        config,
+        semantic
+      });
+      return json(res, 200, { mode: semantic ? "deepseek" : "local", analysis, events: analysis.events });
     }
 
     let requested = url.pathname === "/" ? "/index.html" : url.pathname;

@@ -1,6 +1,15 @@
 # MooTu Agent Lab
 
-用于展示 MooTu 如何观察小组创意讨论、判断发散/收敛阶段、选择是否介入，并输出 Core / Pod 具身动作。
+用于运行和展示 MooTu 如何观察小组创意讨论、判断发散/收敛阶段、选择是否介入，并输出 Core / Pod 具身动作。
+
+## Agent 架构
+
+1. `public/agent-engine.js` 在滚动时间窗内计算参与均衡度、创意发散度和讨论流动性。
+2. 独立策略层根据证据、讨论阶段和介入冷却时间选择观察、邀请少发言者、激活新方向或推进收敛。
+3. 配置 DeepSeek 后，服务端让模型补充语义窗口（想法聚类、新颖度、阶段建议和证据），再交给同一策略层做最终决策。
+4. 每个决策事件包含证据、指标、目标成员、后续观察目标和可审计诊断值，并由界面映射到 Core / Pod 动作。
+
+DeepSeek 不直接控制硬件；缺少 API Key 时，确定性的本地引擎仍可独立工作。
 
 ## 运行
 
@@ -27,7 +36,16 @@ npm run dev
 - `public/config/actions.json`：Core / Pod 动作词典与判断阈值。
 - `public/data/sample-session.json`：示例参与者、逐字稿和模拟传感器事件。
 - `server.mjs`：DeepSeek 语义分析适配器。
-- `public/app.js`：状态计算、决策事件与界面更新。
+- `public/agent-engine.js`：指标计算与策略决策。
+- `public/app.js`：回放状态和界面更新。
+
+## 验证
+
+```bash
+npm run check
+npm test
+npm run build
+```
 
 逐字稿格式：
 
