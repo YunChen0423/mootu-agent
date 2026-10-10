@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="MooTu 小组创意讨论促进 Agent 演示" />
+    <title>MooTu Agent Lab</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/enhancements.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#"><span class="brand-mark">M</span><span>MooTu</span><small>Agent Lab</small></a>
+      <div class="header-actions">
+        <span id="modelBadge" class="status-pill"><i></i>检查模型中</span>
+        <button id="configBtn" class="button ghost">动作配置</button>
+        <button id="analyzeBtn" class="button primary">运行分析</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">GROUP CREATIVITY FACILITATOR</p>
+          <h1>看见讨论如何发生，<br /><span>再决定是否介入。</span></h1>
+          <p class="hero-copy">MooTu 以可验证的证据理解群体状态，在发散与收敛之间持续观察、判断、行动和复盘。</p>
+        </div>
+        <div class="stage-switch" aria-label="讨论阶段">
+          <button class="active" data-stage="diverge">发散</button>
+          <div class="stage-line"><span id="stageProgress"></span></div>
+          <button data-stage="converge">收敛</button>
+        </div>
+      </section>
+
+      <section class="workspace-grid">
+        <article class="panel input-panel">
+          <div class="panel-head">
+            <div><span class="step">01</span><h2>讨论现场</h2></div>
+            <div class="input-actions">
+              <label class="upload">导入视频<input id="videoInput" type="file" accept="video/*" /></label>
+              <label class="upload transcript-upload">上传逐字稿<input id="transcriptInput" type="file" accept=".json,.txt,application/json,text/plain" /></label>
+            </div>
+          </div>
+          <div class="video-stage">
+            <video id="video" controls hidden></video>
+            <div id="videoPlaceholder" class="video-placeholder">
+              <div class="table-scene" aria-hidden="true">
+                <span class="person p1">A</span><span class="person p2">B</span><span class="person p3">C</span>
+                <span class="core-bot"><b></b><em></em></span>
+              </div>
+              <strong>模拟讨论场景</strong>
+              <span>导入视频，或使用时间轴预览 Agent 行为</span>
+            </div>
+          </div>
+          <div class="playback-row">
+            <button id="playBtn" class="round-button" aria-label="播放">▶</button>
+            <div class="scrubber"><input id="scrubber" type="range" min="0" max="260" value="0" /><div><span id="currentTime">00:00</span><span id="duration">00:52 · 5×</span></div></div>
+          </div>
+          <div class="transcript-card">
+            <div class="transcript-heading"><div class="section-label">连续逐字稿</div><span>最近 6 条 · 自动上滚</span></div>
+            <div id="transcriptFeed" class="transcript-feed" aria-live="polite"></div>
+          </div>
+          <div id="participants" class="participants"></div>
+        </article>
+
+        <article class="panel reasoning-panel">
+          <div class="panel-head"><div><span class="step">02</span><h2>Agent 判断</h2></div><span id="decisionStatus" class="decision-tag calm">持续观察</span></div>
+          <div class="cycle" aria-label="Agent 决策循环">
+            <span class="active">观察</span><i>→</i><span>判断</span><i>→</i><span>介入</span><i>→</i><span>反馈</span>
+          </div>
+          <div class="state-block">
+            <div class="section-label">群体状态</div>
+            <div class="metrics">
+              <div><span>参与开放性</span><strong id="participationLabel">等待数据</strong><progress id="participationMetric" max="100" value="0"></progress></div>
+              <div><span>创意发散性</span><strong id="diversityLabel">等待数据</strong><progress id="diversityMetric" max="100" value="0"></progress></div>
+              <div><span>讨论流动性</span><strong id="flowLabel">等待数据</strong><progress id="flowMetric" max="100" value="0"></progress></div>
+            </div>
+          </div>
+          <div class="evidence-block">
+            <div class="section-label">可验证依据</div>
+            <ul id="evidenceList"><li>加载示例后，决策依据会随时间更新。</li></ul>
+          </div>
+          <div class="decision-card">
+            <div><span class="section-label">本轮决策</span><h3 id="decisionTitle">保持观察</h3></div>
+            <p id="decisionReason">当前没有足够证据支持介入。</p>
+            <div class="follow-up"><span>下一步</span><b id="followUp">继续观察讨论变化</b></div>
+          </div>
+        </article>
+
+        <article class="panel output-panel">
+          <div class="panel-head"><div><span class="step">03</span><h2>具身输出</h2></div><button id="jsonBtn" class="text-button">查看 JSON</button></div>
+          <div class="robot-visual">
+            <div class="member member-a" data-member="A"><span>A</span><small>林然</small></div>
+            <div class="member member-b" data-member="B"><span>B</span><small>嘉宁</small></div>
+            <div class="member member-c" data-member="C"><span>C</span><small>子墨</small></div>
+            <div id="focusArrow" class="focus-arrow"><i></i><span id="focusLabel">朝向 C</span></div>
+            <div id="robot" class="robot listening">
+              <div class="antenna"></div><div class="head"><div class="face"><i></i><i></i></div></div><div class="neck"></div><div class="body"><span></span></div>
+            </div>
+            <div class="motion-ring ring-one"></div><div class="motion-ring ring-two"></div>
+            <p id="robotMood">倾听 · 保持中立</p>
+          </div>
+          <div id="coreActions" class="action-grid"></div>
+          <div class="pod-section">
+            <div class="section-label">Pod 个体反馈</div>
+            <div class="pod-row"><div id="podOrb" class="pod-orb"><i></i></div><div><strong id="podTarget">群体陪伴</strong><p id="podActions">恒温 · 无振动 · 无呼吸变化</p></div></div>
+          </div>
+        </article>
+      </section>
+
+      <section class="timeline-panel">
+        <div class="timeline-head"><div><span class="step">04</span><h2>决策时间轴</h2></div><p>点击事件查看 Agent 当时的判断</p></div>
+        <div id="timeline" class="timeline"></div>
+      </section>
+    </main>
+
+    <dialog id="jsonDialog"><div class="dialog-head"><h2>结构化决策</h2><button data-close>×</button></div><pre id="jsonOutput"></pre></dialog>
+    <dialog id="configDialog"><div class="dialog-head"><div><p class="eyebrow">EDITABLE SYSTEM</p><h2>动作与阈值配置</h2></div><button data-close>×</button></div><p class="dialog-note">这些内容来自你提供的 Core / Pod 交互图。修改配置文件即可扩展，无需改动判断核心。</p><div id="configContent"></div></dialog>
+    <div id="toast" class="toast"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

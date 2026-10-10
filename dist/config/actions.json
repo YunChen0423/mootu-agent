@@ -1,0 +1,82 @@
+{
+  "display": {
+    "timeline_speed_multiplier": 5,
+    "transcript_speed_multiplier": 1
+  },
+  "core": {
+    "channels": ["move", "orient", "posture", "voice", "expression", "display"],
+    "strategies": {
+      "invite_quiet_member": {
+        "label": "低压力邀请",
+        "move": "靠近少说者",
+        "orient": "朝向少说者",
+        "posture": "前倾",
+        "voice": "邀请",
+        "expression": "鼓励",
+        "display": ""
+      },
+      "open_new_direction": {
+        "label": "激活新方向",
+        "move": "保持位置",
+        "orient": "环视一圈",
+        "posture": "抬头",
+        "voice": "启发",
+        "expression": "好奇",
+        "display": "启发性询问"
+      },
+      "sustain_flow": {
+        "label": "维持生成",
+        "move": "保持位置",
+        "orient": "环视一圈",
+        "posture": "前倾",
+        "voice": "追问",
+        "expression": "思考",
+        "display": ""
+      },
+      "prepare_convergence": {
+        "label": "建议阶段转换",
+        "move": "保持位置",
+        "orient": "环视一圈",
+        "posture": "抬头",
+        "voice": "总结",
+        "expression": "专注",
+        "display": "候选方案"
+      },
+      "advance_decision": {
+        "label": "推进收敛",
+        "move": "保持位置",
+        "orient": "环视一圈",
+        "posture": "前倾",
+        "voice": "总结",
+        "expression": "坚定",
+        "display": "当前进度"
+      },
+      "observe": {
+        "label": "保持观察",
+        "move": "保持位置",
+        "orient": "面向小组",
+        "posture": "中立",
+        "voice": "保持安静",
+        "expression": "倾听",
+        "display": ""
+      }
+    }
+  },
+  "pod": {
+    "channels": ["emotional_tone", "temperature", "vibration", "breathing"],
+    "responses": {
+      "normal": { "emotional_tone": "陪伴", "temperature": "恒温", "vibration": "—", "breathing": "—" },
+      "low_participation": { "emotional_tone": "鼓励", "temperature": "升温后恒温", "vibration": "振 1 次", "breathing": "缓慢呼吸" },
+      "physiological_alert": { "emotional_tone": "安抚", "temperature": "升温后恒温", "vibration": "—", "breathing": "缓慢呼吸" },
+      "contribution_complete": { "emotional_tone": "奖励认可", "temperature": "恒温", "vibration": "振 2 次", "breathing": "振 2 次" }
+    }
+  },
+  "thresholds": {
+    "window_seconds": 60,
+    "quiet_member_seconds": 70,
+    "silence_thinking_seconds": 10,
+    "silence_stalled_seconds": 18,
+    "intervention_cooldown_seconds": 35,
+    "converge_after_seconds": 170
+  }
+}
