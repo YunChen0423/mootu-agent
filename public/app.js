@@ -2,7 +2,7 @@ import { runAgent } from "./agent-engine.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const state = { session: null, config: null, events: [], time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "mock", lastTranscriptKey: null };
+const state = { session: null, config: null, events: [], time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "local", lastTranscriptKey: null };
 
 const formatTime = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
@@ -15,9 +15,9 @@ async function load() {
     fetch("/data/sample-session.json").then((r) => r.json()),
     fetch("/config/actions.json").then((r) => r.json())
   ]);
-  const status = await fetch("/api/status").then((r) => r.json()).catch(() => ({ mode: "mock" }));
+  const status = await fetch("/api/status").then((r) => r.json()).catch(() => ({ mode: "local" }));
   state.model = status.mode;
-  $("#modelBadge").innerHTML = `<i></i>${status.mode === "deepseek" ? `DeepSeek · ${status.model}` : "本地规则 · 可演示"}`;
+  $("#modelBadge").innerHTML = `<i></i>${status.mode === "deepseek" ? `DeepSeek · ${status.model}` : "本地策略 Agent · 可运行"}`;
   state.events = runAgent({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration, config: state.config }).events;
   renderStatic();
   setTime(0);
@@ -247,7 +247,7 @@ $("#analyzeBtn").addEventListener("click", async () => {
     setTime(0);
     toast(`${result.mode === "deepseek" ? "DeepSeek + 策略引擎" : "本地策略引擎"}分析完成：${result.analysis.summary}`);
   } catch (error) {
-    if (state.model === "mock") {
+    if (state.model !== "deepseek") {
       const local = runAgent({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration, config: state.config });
       state.events = local.events;
       renderStatic();

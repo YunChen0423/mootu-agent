@@ -61,7 +61,7 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (req.method === "GET" && url.pathname === "/api/status") {
       return json(res, 200, {
-        mode: process.env.DEEPSEEK_API_KEY ? "deepseek" : "mock",
+        mode: process.env.DEEPSEEK_API_KEY ? "deepseek" : "local",
         model: process.env.DEEPSEEK_MODEL || "deepseek-chat"
       });
     }
