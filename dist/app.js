@@ -2,7 +2,7 @@ import { runAgent } from "./agent-engine.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const state = { session: null, config: null, events: [], time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "local", lastTranscriptKey: null };
+const state = { session: null, config: null, events: [], time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "local", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null };
 
 const formatTime = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
@@ -26,7 +26,7 @@ async function load() {
 function renderStatic() {
   $("#duration").textContent = `${formatPresentationTime(state.session.duration)} · ${timelineSpeed()}×`;
   $("#scrubber").max = state.session.duration;
-  $("#participants").innerHTML = state.session.participants.map((p) => `<div class="participant"><span>${p.id} · ${p.name}</span><strong id="share-${p.id}">0%</strong></div>`).join("");
+  $("#participants").innerHTML = state.session.participants.map((p) => `<div class="participant"><span>${p.id} · ${p.name}</span><strong id="share-${p.id}">0% · 0轮</strong><small>发言时间占比</small></div>`).join("");
   $("#timeline").innerHTML = state.events.map((e, i) => `<button class="timeline-event" data-index="${i}"><span>${formatPresentationTime(e.time)}</span><strong>${e.title}</strong></button>`).join("");
   $$(".timeline-event").forEach((button) => button.addEventListener("click", () => setTime(state.events[Number(button.dataset.index)].time)));
   renderConfig();
@@ -45,11 +45,13 @@ function setTime(time) {
   $("#scrubber").value = state.time;
   $("#currentTime").textContent = formatPresentationTime(state.time);
   const event = eventAt(state.time);
+  const eventIndex = state.events.indexOf(event);
+  const previousEvent = state.activeEventIndex == null ? null : state.events[state.activeEventIndex];
+  if (state.activeEventIndex != null && eventIndex !== state.activeEventIndex) announceTransition(event, previousEvent);
+  state.activeEventIndex = eventIndex;
   renderTranscriptFeed(state.time);
-  renderDecision(event);
+  renderDecision(event, eventIndex, state.time);
   renderParticipation(state.time);
-  const progress = (state.time / state.session.duration) * 100;
-  $("#stageProgress").style.width = `${progress}%`;
   $$(".stage-switch button").forEach((button) => button.classList.toggle("active", button.dataset.stage === event.stage));
   $$(".timeline-event").forEach((button, index) => button.classList.toggle("active", state.events[index] === event));
   if ($("#video").src && Math.abs($("#video").currentTime - state.time) > 1) $("#video").currentTime = state.time;
@@ -135,12 +137,16 @@ function loadImportedTranscript(lines, fileName) {
 function renderParticipation(time) {
   const lines = state.session.transcript.filter((line) => line.start <= time);
   const totals = Object.fromEntries(state.session.participants.map((p) => [p.id, 0]));
-  lines.forEach((line) => { totals[line.speaker] += Math.max(0, Math.min(line.end, time) - line.start); });
+  const turns = Object.fromEntries(state.session.participants.map((p) => [p.id, 0]));
+  lines.forEach((line) => {
+    totals[line.speaker] += Math.max(0, Math.min(line.end, time) - line.start);
+    turns[line.speaker] += 1;
+  });
   const sum = Object.values(totals).reduce((a, b) => a + b, 0) || 1;
-  Object.entries(totals).forEach(([id, duration]) => { $(`#share-${id}`).textContent = `${Math.round(duration / sum * 100)}%`; });
+  Object.entries(totals).forEach(([id, duration]) => { $(`#share-${id}`).textContent = `${Math.round(duration / sum * 100)}% · ${turns[id]}轮`; });
 }
 
-function renderDecision(event) {
+function renderDecision(event, eventIndex, time) {
   const action = state.config.core.strategies[event.strategy];
   const intervening = event.strategy !== "observe";
   $("#decisionStatus").textContent = intervening ? "准备介入" : "持续观察";
@@ -149,26 +155,50 @@ function renderDecision(event) {
   $("#decisionReason").textContent = event.reason;
   $("#followUp").textContent = event.followUp;
   $("#evidenceList").innerHTML = event.evidence.map((item) => `<li>${item}</li>`).join("");
-  setMetric("participation", event.metrics.participation);
-  setMetric("diversity", event.metrics.diversity);
-  setMetric("flow", event.metrics.flow);
-  $$(".cycle span").forEach((item, index) => item.classList.toggle("active", index === (intervening ? 2 : 0)));
+  setMetric("participation", event.metrics.participation, ["失衡", "需关注", "均衡"]);
+  setMetric("diversity", event.metrics.diversity, ["收缩", "拓展中", "发散中"]);
+  setMetric("flow", event.metrics.flow, ["停滞", "思考停顿", "流动"]);
+  const nextTime = state.events[eventIndex + 1]?.time ?? state.session.duration;
+  const cyclePhase = Math.min(3, Math.floor(clamp((time - event.time) / Math.max(nextTime - event.time, 1), 0, 0.999) * 4));
+  $$(".cycle span").forEach((item, index) => item.classList.toggle("active", index === cyclePhase));
   $("#robot").classList.toggle("intervening", intervening);
   $$(".member").forEach((member) => member.classList.toggle("target", member.dataset.member === event.target));
   $("#focusArrow").classList.toggle("show", Boolean(event.target));
   if (event.target) $("#focusLabel").textContent = `朝向 ${event.target}`;
   $("#robotMood").textContent = `${action.expression} · ${action.posture}`;
-  $("#coreActions").innerHTML = Object.entries(action).filter(([key]) => key !== "label").map(([key, value]) => `<div class="action"><span>${channelLabel(key)}</span><strong>${value || "—"}</strong></div>`).join("");
+  const utterance = (action.display || "").replace("{{target}}", event.target || "大家");
+  $("#agentSpeechText").textContent = utterance;
+  $("#agentSpeech").classList.toggle("show", Boolean(utterance));
+  $("#coreActions").innerHTML = Object.entries(action).filter(([key]) => key !== "label").map(([key, value]) => `<div class="action" data-channel="${key}"><span>${channelLabel(key)}</span><strong>${escapeHtml(key === "display" ? utterance : value || "—")}</strong></div>`).join("");
   const pod = event.target ? state.config.pod.responses.low_participation : state.config.pod.responses.normal;
   $("#podTarget").textContent = event.target ? `Pod ${event.target} · 个体鼓励` : "群体陪伴";
   $("#podActions").textContent = `${pod.temperature} · ${pod.vibration} · ${pod.breathing}`;
   $("#podOrb").classList.toggle("active", Boolean(event.target));
-  $("#jsonOutput").textContent = JSON.stringify({ timestamp: formatPresentationTime(event.time), source_timestamp: formatTime(event.time), playback_speed: timelineSpeed(), stage: event.stage, observation: { evidence: event.evidence }, assessment: event.metrics, decision: { intervene: intervening, strategy: event.strategy, reason: event.reason }, actions: { core: action, pod: event.target ? { target: event.target, ...pod } : pod }, follow_up: event.followUp }, null, 2);
+  $("#jsonOutput").textContent = JSON.stringify({ timestamp: formatPresentationTime(event.time), source_timestamp: formatTime(event.time), playback_speed: timelineSpeed(), stage: event.stage, observation: { evidence: event.evidence }, assessment: event.metrics, decision: { intervene: intervening, strategy: event.strategy, reason: event.reason }, actions: { core: { ...action, display: utterance }, pod: event.target ? { target: event.target, ...pod } : pod }, follow_up: event.followUp }, null, 2);
 }
 
-function setMetric(name, value) {
-  $(`#${name}Metric`).value = value;
-  $(`#${name}Label`).textContent = value >= 75 ? "良好" : value >= 50 ? "需观察" : "不足";
+function setMetric(name, value, labels) {
+  const stateIndex = value >= 72 ? 2 : value >= 48 ? 1 : 0;
+  $(`#${name}Label`).textContent = labels[stateIndex];
+  $(`#${name}States`).title = `内部判断值 ${value}/100`;
+  [...$(`#${name}States`).children].forEach((item, index) => item.classList.toggle("active", index === stateIndex));
+}
+
+function announceTransition(event, previousEvent) {
+  const stageChanged = previousEvent && previousEvent.stage !== event.stage;
+  $("#transitionKind").textContent = stageChanged ? `阶段切换 · 进入${event.stage === "converge" ? "收敛" : "发散"}` : "决策更新";
+  $("#transitionTitle").textContent = event.title;
+  const notice = $("#transitionNotice");
+  notice.classList.remove("show");
+  void notice.offsetWidth;
+  notice.classList.add("show");
+  [$(".reasoning-panel"), $(".output-panel"), $(".stage-switch")].forEach((element) => {
+    element.classList.remove("decision-flash");
+    void element.offsetWidth;
+    element.classList.add("decision-flash");
+  });
+  clearTimeout(state.transitionTimer);
+  state.transitionTimer = setTimeout(() => notice.classList.remove("show"), 2300);
 }
 
 function channelLabel(key) {

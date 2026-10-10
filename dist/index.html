@@ -27,10 +27,12 @@
         </div>
         <div class="stage-switch" aria-label="讨论阶段">
           <button class="active" data-stage="diverge">发散</button>
-          <div class="stage-line"><span id="stageProgress"></span></div>
+          <span class="stage-arrow" aria-hidden="true">→</span>
           <button data-stage="converge">收敛</button>
         </div>
       </section>
+
+      <div id="transitionNotice" class="transition-notice" role="status" aria-live="polite"><span id="transitionKind">决策更新</span><strong id="transitionTitle">保持观察</strong></div>
 
       <section class="workspace-grid">
         <article class="panel input-panel">
@@ -71,9 +73,9 @@
           <div class="state-block">
             <div class="section-label">群体状态</div>
             <div class="metrics">
-              <div><span>参与开放性</span><strong id="participationLabel">等待数据</strong><progress id="participationMetric" max="100" value="0"></progress></div>
-              <div><span>创意发散性</span><strong id="diversityLabel">等待数据</strong><progress id="diversityMetric" max="100" value="0"></progress></div>
-              <div><span>讨论流动性</span><strong id="flowLabel">等待数据</strong><progress id="flowMetric" max="100" value="0"></progress></div>
+              <div><span>参与开放性 <small>时长 70% · 轮次 30%</small></span><strong id="participationLabel">等待数据</strong><div id="participationStates" class="state-scale"><i>失衡</i><i>需关注</i><i>均衡</i></div></div>
+              <div><span>创意发散性</span><strong id="diversityLabel">等待数据</strong><div id="diversityStates" class="state-scale"><i>收缩</i><i>拓展中</i><i>发散中</i></div></div>
+              <div><span>讨论流动性</span><strong id="flowLabel">等待数据</strong><div id="flowStates" class="state-scale"><i>停滞</i><i>思考停顿</i><i>流动</i></div></div>
             </div>
           </div>
           <div class="evidence-block">
@@ -94,6 +96,7 @@
             <div class="member member-b" data-member="B"><span>B</span><small>嘉宁</small></div>
             <div class="member member-c" data-member="C"><span>C</span><small>子墨</small></div>
             <div id="focusArrow" class="focus-arrow"><i></i><span id="focusLabel">朝向 C</span></div>
+            <div id="agentSpeech" class="agent-speech" aria-live="polite"><small>MooTu 说</small><strong id="agentSpeechText"></strong></div>
             <div id="robot" class="robot listening">
               <div class="antenna"></div><div class="head"><div class="face"><i></i><i></i></div></div><div class="neck"></div><div class="body"><span></span></div>
             </div>

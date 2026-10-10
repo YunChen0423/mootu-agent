@@ -13,7 +13,7 @@
         "posture": "前倾",
         "voice": "邀请",
         "expression": "鼓励",
-        "display": ""
+        "display": "{{target}}，如果你愿意，也想听听你的想法。"
       },
       "open_new_direction": {
         "label": "激活新方向",
@@ -22,7 +22,7 @@
         "posture": "抬头",
         "voice": "启发",
         "expression": "好奇",
-        "display": "启发性询问"
+        "display": "我们还可以尝试一个完全不同的方向吗？"
       },
       "sustain_flow": {
         "label": "维持生成",
@@ -31,7 +31,7 @@
         "posture": "前倾",
         "voice": "追问",
         "expression": "思考",
-        "display": ""
+        "display": "这个想法还能往哪一步延伸？"
       },
       "prepare_convergence": {
         "label": "建议阶段转换",
@@ -40,7 +40,7 @@
         "posture": "抬头",
         "voice": "总结",
         "expression": "专注",
-        "display": "候选方案"
+        "display": "我们已经有几个方向了，要不要开始比较一下？"
       },
       "advance_decision": {
         "label": "推进收敛",
@@ -49,7 +49,7 @@
         "posture": "前倾",
         "voice": "总结",
         "expression": "坚定",
-        "display": "当前进度"
+        "display": "目前更倾向哪个方案？可以从价值、成本和可行性来比较。"
       },
       "observe": {
         "label": "保持观察",

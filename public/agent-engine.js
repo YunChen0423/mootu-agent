@@ -23,21 +23,29 @@ function similarity(left, right) {
 function participationAt(transcript, speakers, time, windowSeconds) {
   const start = Math.max(0, time - windowSeconds);
   const totals = Object.fromEntries(speakers.map((speaker) => [speaker, 0]));
+  const turnCounts = Object.fromEntries(speakers.map((speaker) => [speaker, 0]));
   transcript.forEach((line) => {
-    if (line.speaker in totals) totals[line.speaker] += overlap(line, start, time);
+    if (line.speaker in totals) {
+      totals[line.speaker] += overlap(line, start, time);
+      if (line.start <= time && line.end >= start) turnCounts[line.speaker] += 1;
+    }
   });
   const total = Object.values(totals).reduce((sum, value) => sum + value, 0);
+  const totalTurns = Object.values(turnCounts).reduce((sum, value) => sum + value, 0);
   const ideal = 1 / speakers.length;
   const shares = Object.fromEntries(speakers.map((speaker) => [speaker, total ? totals[speaker] / total : 0]));
-  const deviation = Object.values(shares).reduce((sum, share) => sum + Math.abs(share - ideal), 0);
+  const turnShares = Object.fromEntries(speakers.map((speaker) => [speaker, totalTurns ? turnCounts[speaker] / totalTurns : 0]));
   const maximumDeviation = 2 * (1 - ideal);
-  const score = speakers.length <= 1 ? (total ? 100 : 50) : total ? clamp(Math.round((1 - deviation / maximumDeviation) * 100)) : 50;
-  const quietTarget = [...speakers].sort((a, b) => totals[a] - totals[b])[0];
+  const evenness = (values) => 1 - Object.values(values).reduce((sum, share) => sum + Math.abs(share - ideal), 0) / maximumDeviation;
+  const durationScore = speakers.length <= 1 ? 100 : total ? clamp(Math.round(evenness(shares) * 100)) : 50;
+  const turnScore = speakers.length <= 1 ? 100 : totalTurns ? clamp(Math.round(evenness(turnShares) * 100)) : 50;
+  const score = Math.round(durationScore * 0.7 + turnScore * 0.3);
+  const quietTarget = [...speakers].sort((a, b) => (shares[a] * 0.7 + turnShares[a] * 0.3) - (shares[b] * 0.7 + turnShares[b] * 0.3))[0];
   const lastSpoken = Object.fromEntries(speakers.map((speaker) => {
     const lines = transcript.filter((line) => line.speaker === speaker && line.start <= time);
     return [speaker, lines.length ? Math.max(...lines.map((line) => line.end)) : 0];
   }));
-  return { score, totals, shares, quietTarget, silenceSince: time - lastSpoken[quietTarget] };
+  return { score, durationScore, turnScore, totals, shares, turnCounts, turnShares, quietTarget, silenceSince: time - lastSpoken[quietTarget] };
 }
 
 function flowAt(transcript, time, windowSeconds, thresholds) {
@@ -78,7 +86,7 @@ function semanticAt(semantic, time) {
 function evidenceFor({ participation, diversity, flow, stage, target, semantic }) {
   const evidence = [];
   if (participation.score < 58 && target) evidence.push(`${target} 在最近观察窗口中的参与明显低于其他成员。`);
-  else evidence.push(`近期参与均衡度为 ${participation.score}/100。`);
+  else evidence.push(`近期参与状态综合发言时长与轮次，均衡度为 ${participation.score}/100。`);
   if (diversity.score < 52) evidence.push(`近期新方向增长有限，创意发散度为 ${diversity.score}/100。`);
   else evidence.push(`目前累计识别到约 ${diversity.ideaCount} 条候选想法表达。`);
   if (flow.currentSilence >= 10) evidence.push(`当前连续沉默约 ${Math.round(flow.currentSilence)} 秒。`);
@@ -92,7 +100,7 @@ function chooseDecision(context) {
   const cooledDown = time - lastInterventionTime >= thresholds.intervention_cooldown_seconds;
   if (stage !== previousStage) return { strategy: "prepare_convergence", title: "建议从发散转向收敛", followUp: "展示已有方向，并观察成员是否开始比较方案" };
   if (!cooledDown) return { strategy: "observe", title: "暂不追加介入", followUp: "等待上一轮介入产生反馈" };
-  const quietShare = participation.shares[participation.quietTarget] || 0;
+  const quietShare = (participation.shares[participation.quietTarget] || 0) * 0.7 + (participation.turnShares[participation.quietTarget] || 0) * 0.3;
   if (participation.score < 58 && quietShare < 0.12 && participation.silenceSince >= thresholds.quiet_member_seconds * 0.65) {
     return { strategy: "invite_quiet_member", title: `低压力邀请 ${participation.quietTarget}`, followUp: `观察 ${participation.quietTarget} 是否在下一窗口开始参与`, target: participation.quietTarget };
   }
@@ -139,7 +147,7 @@ export function runAgent({ transcript, participants = [], duration, config, sema
       time: Math.round(time), stage, strategy: decision.strategy, evidence,
       metrics: { participation: participation.score, diversity: diversity.score, flow: flow.score },
       title: decision.title, reason: evidence.join(" "), followUp: decision.followUp, target: decision.target || null,
-      diagnostics: { speaking_seconds: participation.totals, current_silence_seconds: Math.round(flow.currentSilence), idea_count: diversity.ideaCount, recent_novelty: Number(diversity.novelty.toFixed(2)) }
+      diagnostics: { speaking_seconds: participation.totals, turn_counts: participation.turnCounts, participation_basis: "70% speaking duration + 30% turn count", current_silence_seconds: Math.round(flow.currentSilence), idea_count: diversity.ideaCount, recent_novelty: Number(diversity.novelty.toFixed(2)) }
     };
     previousStage = stage;
     return event;
