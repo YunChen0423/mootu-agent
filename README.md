@@ -170,7 +170,8 @@ mootu-agent/
 │   └── ui-contract.test.mjs
 ├── ai-agent.mjs               # DeepSeek 策略、记忆、校验与回退
 ├── server.mjs                 # 静态服务与 Agent API
-├── build.mjs                  # 生成 dist/
+├── build-worker.mjs           # 生成可运行 Agent API 的 Sites Worker
+├── build.mjs                  # 可选的纯静态构建
 └── .openai/hosting.json       # OpenAI Sites 部署配置
 ```
 
@@ -180,7 +181,8 @@ mootu-agent/
 npm run dev      # 启动本地开发服务器
 npm run check    # 检查 JavaScript 语法
 npm test         # 运行 Agent 与 UI 契约测试
-npm run build    # 将可部署静态文件生成到 dist/
+npm run build    # 生成包含 Agent API 的 Sites Worker 到 dist/
+npm run build:static # 仅生成纯静态版本
 ```
 
 ## 修改入口

@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "node --env-file-if-exists=.env server.mjs",
     "start": "node --env-file-if-exists=.env server.mjs",
-    "build": "node build.mjs",
-    "check": "node --check server.mjs && node --check ai-agent.mjs && node --check public/app.js && node --check public/agent-engine.js && node --check public/live-sensing.js && node --check build.mjs",
+    "build": "node build-worker.mjs",
+    "build:static": "node build.mjs",
+    "check": "node --check server.mjs && node --check ai-agent.mjs && node --check build-worker.mjs && node --check public/app.js && node --check public/agent-engine.js && node --check public/live-sensing.js && node --check build.mjs",
     "test": "node --test tests/*.test.mjs"
   }
 }
