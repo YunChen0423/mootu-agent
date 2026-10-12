@@ -3,7 +3,7 @@ import { createLiveSensing } from "./live-sensing.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const state = { session: null, config: null, events: [], time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0 };
+const state = { session: null, config: null, events: [], time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0 };
 
 const formatTime = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
@@ -32,6 +32,7 @@ async function load() {
   state.events = runAgent({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration, config: state.config }).events;
   renderStatic();
   setTime(0);
+  if (state.model === "deepseek") void runFullAgentAnalysis({ automatic: true });
 }
 
 function renderStatic() {
@@ -244,6 +245,7 @@ function loadImportedTranscript(lines, fileName) {
   renderStatic();
   setTime(0);
   toast(`已载入 ${fileName} · ${lines.length} 条发言`);
+  if (state.model === "deepseek") void runFullAgentAnalysis({ automatic: true });
 }
 
 function renderParticipation(time) {
@@ -607,19 +609,23 @@ $("#transcriptInput").addEventListener("change", async (event) => {
     event.target.value = "";
   }
 });
-$("#analyzeBtn").addEventListener("click", async () => {
+async function runFullAgentAnalysis({ automatic = false } = {}) {
+  const requestId = ++state.analysisRequestId;
   $("#analyzeBtn").disabled = true;
-  $("#analyzeBtn").textContent = "分析中…";
+  $("#analyzeBtn").textContent = "AI 分析中…";
+  $("#decisionSource").textContent = "DeepSeek 正在分析";
   try {
     const result = await fetch("/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration }) }).then(async (r) => { if (!r.ok) throw new Error((await r.json()).error); return r.json(); });
+    if (requestId !== state.analysisRequestId) return;
     state.events = result.events;
     renderStatic();
     setTime(0);
     state.model = result.mode;
     $("#modelBadge").classList.toggle("fallback", result.mode !== "deepseek");
     $("#modelBadge").innerHTML = `<i></i>${result.mode === "deepseek" ? "DeepSeek AI Agent · 已连接" : "AI 未配置 · 安全回退"}`;
-    toast(`${result.mode === "deepseek" ? "DeepSeek AI Agent" : "规则安全回退"}完成：${result.analysis.summary}`);
+    toast(`${automatic ? "自动" : "重新"}${result.mode === "deepseek" ? " AI 分析" : "安全回退分析"}完成：${result.analysis.summary}`);
   } catch (error) {
+    if (requestId !== state.analysisRequestId) return;
     if (state.model !== "deepseek") {
       const local = runAgent({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration, config: state.config });
       state.events = local.events;
@@ -627,11 +633,19 @@ $("#analyzeBtn").addEventListener("click", async () => {
       setTime(0);
       toast(`本地策略引擎分析完成：${local.summary}`);
     } else {
+      $("#decisionSource").textContent = "AI 请求失败 · 保留安全回退";
       toast(`分析失败：${error.message}`);
     }
   }
-  finally { $("#analyzeBtn").disabled = false; $("#analyzeBtn").textContent = "运行 AI Agent"; }
-});
+  finally {
+    if (requestId === state.analysisRequestId) {
+      $("#analyzeBtn").disabled = false;
+      $("#analyzeBtn").textContent = "重新分析";
+    }
+  }
+}
+
+$("#analyzeBtn").addEventListener("click", () => runFullAgentAnalysis({ automatic: false }));
 $("#jsonBtn").addEventListener("click", () => $("#jsonDialog").showModal());
 $("#configBtn").addEventListener("click", () => $("#configDialog").showModal());
 $$("[data-close]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
