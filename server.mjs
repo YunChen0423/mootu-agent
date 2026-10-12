@@ -1,7 +1,8 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
-import { generateContextualUtterance, runAgent } from "./public/agent-engine.js";
+import { generateContextualUtterance } from "./public/agent-engine.js";
+import { decideLiveWithAI, runAIAgent } from "./ai-agent.mjs";
 
 const root = join(process.cwd(), "public");
 const port = Number(process.env.PORT || 4173);
@@ -22,38 +23,6 @@ async function readBody(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
-}
-
-async function analyzeWithDeepSeek(payload, checkpoints) {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) return null;
-  const baseUrl = (process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com").replace(/\/$/, "");
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: process.env.DEEPSEEK_MODEL || "deepseek-chat",
-      response_format: { type: "json_object" },
-      temperature: 0.2,
-      max_tokens: 1600,
-      messages: [
-        {
-          role: "system",
-          content: `你是 MooTu 小组创意讨论促进 Agent 的语义分析器。你只负责为给定检查点分析可观察的讨论证据，不直接控制硬件，也不输出隐藏推理过程。严格输出 JSON：{\"summary\":string,\"idea_clusters\":[string],\"windows\":[{\"time\":number,\"idea_diversity\":number,\"novelty\":\"high|medium|low\",\"flow_interpretation\":string,\"stage_recommendation\":\"diverge|converge\",\"evidence\":string}]}。idea_diversity 必须为 0 到 100。不得从视频或文本猜测生理或心理状态。`
-        },
-        {
-          role: "user",
-          content: `检查点（秒）：${JSON.stringify(checkpoints)}\n参与者：${JSON.stringify(payload.participants || [])}\n请以 JSON 分析这段带说话人的创意讨论逐字稿：\n${JSON.stringify(payload.transcript)}`
-        }
-      ]
-    })
-  });
-  if (!response.ok) throw new Error(`DeepSeek ${response.status}: ${await response.text()}`);
-  const result = await response.json();
-  return JSON.parse(result.choices?.[0]?.message?.content || "{}");
 }
 
 async function generateMessage(payload) {
@@ -92,8 +61,9 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (req.method === "GET" && url.pathname === "/api/status") {
       return json(res, 200, {
-        mode: process.env.DEEPSEEK_API_KEY ? "deepseek" : "local",
-        model: process.env.DEEPSEEK_MODEL || "deepseek-chat"
+        mode: process.env.DEEPSEEK_API_KEY ? "deepseek" : "fallback",
+        model: process.env.DEEPSEEK_MODEL || "deepseek-chat",
+        capabilities: process.env.DEEPSEEK_API_KEY ? ["understand", "decide", "speak", "reflect"] : ["rule_fallback"]
       });
     }
     if (req.method === "POST" && url.pathname === "/api/analyze") {
@@ -101,20 +71,18 @@ const server = createServer(async (req, res) => {
       if (!Array.isArray(payload.transcript) || !payload.transcript.length) return json(res, 400, { error: "transcript 必须是非空数组" });
       const config = JSON.parse(await readFile(join(root, "config/actions.json"), "utf8"));
       const duration = Number(payload.duration) || Math.max(...payload.transcript.map((line) => Number(line.end) || 0));
-      const interval = Math.max(35, Math.min(55, Math.round(duration / 6)));
-      const checkpoints = [0];
-      for (let time = interval; time < duration; time += interval) checkpoints.push(time);
-      if (duration - checkpoints.at(-1) < interval / 2) checkpoints[checkpoints.length - 1] = duration;
-      else checkpoints.push(duration);
-      const semantic = await analyzeWithDeepSeek(payload, checkpoints);
-      const analysis = runAgent({
+      const result = await runAIAgent({
         transcript: payload.transcript,
         participants: payload.participants || [],
         duration,
-        config,
-        semantic
+        config
       });
-      return json(res, 200, { mode: semantic ? "deepseek" : "local", analysis, events: analysis.events });
+      return json(res, 200, result);
+    }
+    if (req.method === "POST" && url.pathname === "/api/agent/decide") {
+      const payload = await readBody(req);
+      const config = JSON.parse(await readFile(join(root, "config/actions.json"), "utf8"));
+      return json(res, 200, await decideLiveWithAI({ ...payload, config }));
     }
     if (req.method === "POST" && url.pathname === "/api/generate-message") {
       const payload = await readBody(req);

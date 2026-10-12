@@ -23,7 +23,7 @@
       <div class="header-actions">
         <span id="modelBadge" class="status-pill"><i></i>检查模型中</span>
         <button id="configBtn" class="button ghost">动作配置</button>
-        <button id="analyzeBtn" class="button primary">运行分析</button>
+        <button id="analyzeBtn" class="button primary">运行 AI Agent</button>
       </div>
     </header>
 
@@ -85,6 +85,12 @@
             <div><span class="section-label">本轮决策</span><h3 id="decisionTitle">保持观察</h3></div>
             <p id="decisionReason">当前没有足够证据支持介入。</p>
             <div class="follow-up"><span>下一步</span><b id="followUp">继续观察讨论变化</b></div>
+          </div>
+          <div class="agent-state" aria-label="AI Agent 内部状态">
+            <div><span>决策来源</span><strong id="decisionSource">安全回退</strong></div>
+            <div><span>预期效果</span><strong id="expectedEffect">等待下一窗口验证</strong></div>
+            <div><span>上轮复盘</span><strong id="reflectionText">尚无上一轮行动</strong></div>
+            <div><span>工作记忆</span><strong id="memoryCount">0 条</strong></div>
           </div>
           <div id="decisionCycle" class="cycle" aria-label="Agent 决策循环">
             <span class="active">观察</span><i>→</i><span>判断</span><i>→</i><span>介入</span><i>→</i><span>反馈</span>

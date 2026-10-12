@@ -344,6 +344,39 @@
   border: 2px solid transparent;
 }
 
+.agent-state {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 9px 0;
+}
+
+.agent-state > div {
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(247,185,24,.055);
+}
+
+.agent-state span {
+  display: block;
+  color: var(--muted);
+  font-size: 9px;
+  margin-bottom: 3px;
+}
+
+.agent-state strong {
+  display: block;
+  font-size: 10px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-pill.fallback i { background: #d59a12; }
+
 .decision-card.decision-flash {
   animation: decision-card-flash 1.5s ease;
 }

@@ -45,9 +45,11 @@ Core 群体动作 + Pod 个体反馈 + 可审计 JSON
 
 浏览器现场模式由 `public/live-sensing.js` 提供。背景噪声不会直接被当成有效发言；只有语音识别确认的内容才进入实时逐字稿。当前版本不提供多人说话人分离。
 
-### 2. 阶段与策略
+### 2. AI 决策策略
 
-策略层使用指标、讨论阶段、介入冷却时间和最近证据选择以下决策：
+配置 DeepSeek 后，`ai-agent.mjs` 会把测量信号、最近逐字稿、可用动作和短期记忆交给模型。模型直接选择讨论阶段、是否介入、策略、目标成员和具体发言，并为下一观察窗口写下预期效果。下一次决策会复盘上一轮介入后的参与、发散与流动变化。
+
+模型只能从下面的受限动作空间选择；服务端会校验策略、目标成员、冷却时间和文本长度。无效输出会降级为 `observe`：
 
 | 策略 | 典型触发情境 | 目标 |
 | --- | --- | --- |
@@ -67,13 +69,16 @@ Core 群体动作 + Pod 个体反馈 + 可审计 JSON
 
 动作配置与判断引擎分离，因此可以独立修改动作表现、阈值和文案，而不需要重写核心决策代码。
 
-### 4. DeepSeek 的角色
+### 4. DeepSeek 与安全回退
 
-没有 API Key 时，确定性的本地策略引擎可以独立运行。配置 DeepSeek 后：
+配置 DeepSeek 后，它不只是生成文案，而是 Agent 的策略决策层：
 
-- 服务端可以补充想法聚类、新颖度、阶段建议和语义证据；
-- 介入时可以依据最近 6 条发言生成一句简短、具体的中文表达；
-- 模型不直接控制硬件，最终策略仍经过同一决策层。
+- 理解最近讨论及测量信号；
+- 选择阶段、介入策略和目标成员；
+- 生成与讨论内容相关的自然发言；
+- 写下预期效果，并在后续窗口复盘可观察变化。
+
+确定性代码仍负责信号测量、权限、动作白名单、介入冷却和输出校验。没有 API Key 或请求失败时，系统明确显示“AI 未配置 · 安全回退”，并使用规则策略维持演示；此时不声称正在进行大模型推理。
 
 ## 快速开始
 
@@ -161,8 +166,10 @@ mootu-agent/
 │   └── data/sample-session.json
 ├── tests/
 │   ├── agent-engine.test.mjs
+│   ├── ai-agent.test.mjs
 │   └── ui-contract.test.mjs
-├── server.mjs                 # 静态服务与 DeepSeek API 适配
+├── ai-agent.mjs               # DeepSeek 策略、记忆、校验与回退
+├── server.mjs                 # 静态服务与 Agent API
 ├── build.mjs                  # 生成 dist/
 └── .openai/hosting.json       # OpenAI Sites 部署配置
 ```
@@ -179,7 +186,8 @@ npm run build    # 将可部署静态文件生成到 dist/
 ## 修改入口
 
 - 调整动作、文案和阈值：`public/config/actions.json`
-- 修改指标与策略：`public/agent-engine.js`
+- 修改确定性测量与回退策略：`public/agent-engine.js`
+- 修改 AI 策略提示、记忆与安全校验：`ai-agent.mjs`
 - 修改现场音视频判断：`public/live-sensing.js`
 - 修改界面状态和逐字稿处理：`public/app.js`
 - 替换示例讨论：`public/data/sample-session.json`

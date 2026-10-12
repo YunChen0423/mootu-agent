@@ -113,6 +113,38 @@ function evidenceFor({ participation, diversity, flow, stage, target, semantic }
   return evidence.slice(0, 3);
 }
 
+export function buildObservations({ transcript, participants = [], duration, config, semantic = null }) {
+  const sorted = [...transcript].sort((a, b) => a.start - b.start);
+  const speakers = participants.length ? participants.map((participant) => participant.id) : [...new Set(sorted.map((line) => line.speaker))];
+  if (!sorted.length) throw new Error("逐字稿不能为空");
+  if (!speakers.length) throw new Error("至少需要一位参与者");
+  const endTime = duration || Math.max(...sorted.map((line) => line.end));
+  const thresholds = config.thresholds;
+  const interval = Math.max(35, Math.min(55, Math.round(endTime / 6)));
+  const checkpoints = [0];
+  for (let time = interval; time < endTime; time += interval) checkpoints.push(time);
+  if (endTime - checkpoints.at(-1) < interval / 2) checkpoints[checkpoints.length - 1] = endTime;
+  else checkpoints.push(endTime);
+
+  return checkpoints.map((time) => {
+    const participation = participationAt(sorted, speakers, time, thresholds.window_seconds);
+    const flow = flowAt(sorted, time, thresholds.window_seconds, thresholds);
+    const diversity = diversityAt(sorted, time, thresholds.window_seconds);
+    const semanticWindow = semanticAt(semantic, time);
+    if (semanticWindow?.idea_diversity != null) diversity.score = clamp(Math.round((diversity.score + Number(semanticWindow.idea_diversity)) / 2));
+    const stageByTime = time >= thresholds.converge_after_seconds || time / endTime >= 0.68;
+    const suggestedStage = semanticWindow?.stage_recommendation === "converge" || stageByTime ? "converge" : "diverge";
+    const recentTranscript = sorted.filter((line) => line.start <= time && line.end >= Math.max(0, time - thresholds.window_seconds)).slice(-8);
+    return {
+      time: Math.round(time), suggestedStage,
+      metrics: { participation: participation.score, diversity: diversity.score, flow: flow.score },
+      evidence: time === 0 ? ["讨论尚未开始，Agent 暂不介入。"] : evidenceFor({ participation, diversity, flow, stage: suggestedStage, target: participation.quietTarget, semantic: semanticWindow }),
+      recentTranscript,
+      diagnostics: { speaking_seconds: participation.totals, turn_counts: participation.turnCounts, participation_basis: "70% speaking duration + 30% turn count", quiet_target: participation.quietTarget, quiet_seconds: Math.round(participation.silenceSince), current_silence_seconds: Math.round(flow.currentSilence), idea_count: diversity.ideaCount, recent_novelty: Number(diversity.novelty.toFixed(2)) }
+    };
+  });
+}
+
 function chooseDecision(context) {
   const { time, stage, previousStage, participation, diversity, flow, thresholds, lastInterventionTime } = context;
   const cooledDown = time - lastInterventionTime >= thresholds.intervention_cooldown_seconds;
@@ -138,34 +170,28 @@ export function runAgent({ transcript, participants = [], duration, config, sema
   if (!speakers.length) throw new Error("至少需要一位参与者");
   const endTime = duration || Math.max(...sorted.map((line) => line.end));
   const thresholds = config.thresholds;
-  const interval = Math.max(35, Math.min(55, Math.round(endTime / 6)));
-  const checkpoints = [0];
-  for (let time = interval; time < endTime; time += interval) checkpoints.push(time);
-  if (endTime - checkpoints.at(-1) < interval / 2) checkpoints[checkpoints.length - 1] = endTime;
-  else checkpoints.push(endTime);
+  const observations = buildObservations({ transcript: sorted, participants, duration: endTime, config, semantic });
 
   let previousStage = "diverge";
   let lastInterventionTime = -Infinity;
-  const events = checkpoints.map((time, index) => {
+  const events = observations.map((observation, index) => {
+    const { time, suggestedStage: stage } = observation;
     const participation = participationAt(sorted, speakers, time, thresholds.window_seconds);
     const flow = flowAt(sorted, time, thresholds.window_seconds, thresholds);
     const diversity = diversityAt(sorted, time, thresholds.window_seconds);
-    const semanticWindow = semanticAt(semantic, time);
-    if (semanticWindow?.idea_diversity != null) diversity.score = clamp(Math.round((diversity.score + Number(semanticWindow.idea_diversity)) / 2));
-    const stageByTime = time >= thresholds.converge_after_seconds || time / endTime >= 0.68;
-    const stage = semanticWindow?.stage_recommendation === "converge" || stageByTime ? "converge" : "diverge";
     const decision = index === 0
       ? { strategy: "observe", title: "等待讨论自然启动", followUp: "继续收集发言与想法证据" }
       : chooseDecision({ time, stage, previousStage, participation, diversity, flow, thresholds, lastInterventionTime });
     if (decision.strategy !== "observe") lastInterventionTime = time;
     const evidence = index === 0
       ? ["讨论尚未开始，Agent 暂不介入。"]
-      : evidenceFor({ participation, diversity, flow, stage, target: decision.target, semantic: semanticWindow });
+      : evidenceFor({ participation, diversity, flow, stage, target: decision.target, semantic: semanticAt(semantic, time) });
     const event = {
       time: Math.round(time), stage, strategy: decision.strategy, evidence,
-      metrics: { participation: participation.score, diversity: diversity.score, flow: flow.score },
+      metrics: observation.metrics,
       title: decision.title, reason: evidence.join(" "), followUp: decision.followUp, target: decision.target || null,
-      diagnostics: { speaking_seconds: participation.totals, turn_counts: participation.turnCounts, participation_basis: "70% speaking duration + 30% turn count", current_silence_seconds: Math.round(flow.currentSilence), idea_count: diversity.ideaCount, recent_novelty: Number(diversity.novelty.toFixed(2)) }
+      diagnostics: observation.diagnostics,
+      decisionSource: "rule_fallback", expectedEffect: decision.followUp, reflection: index ? "等待下一观察窗口验证" : "尚无上一轮行动"
     };
     previousStage = stage;
     return event;
