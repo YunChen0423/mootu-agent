@@ -83,6 +83,24 @@ function semanticAt(semantic, time) {
   return [...semantic.windows].sort((a, b) => Math.abs(a.time - time) - Math.abs(b.time - time))[0];
 }
 
+function compactTopic(lines) {
+  const text = [...lines].reverse().map((line) => String(line.text || "").trim()).find(Boolean) || "刚才的讨论";
+  return text.replace(/[。！？!?]+$/g, "").slice(0, 24);
+}
+
+export function generateContextualUtterance({ strategy, transcript = [], target = null, stage = "diverge" }) {
+  if (strategy === "observe") return "";
+  const topic = compactTopic(transcript.slice(-4));
+  const utterances = {
+    invite_quiet_member: `${target || "这位伙伴"}，刚才大家提到“${topic}”，你怎么看？`,
+    open_new_direction: `围绕“${topic}”，如果换一个完全不同的视角，会是什么？`,
+    sustain_flow: `刚才提到“${topic}”，还能再具体到一个场景吗？`,
+    prepare_convergence: `围绕“${topic}”已经有了几个方向，我们先比较一下好吗？`,
+    advance_decision: `关于“${topic}”，现在更倾向哪个方案？为什么？`
+  };
+  return utterances[strategy] || (stage === "converge" ? `关于“${topic}”，我们先明确取舍好吗？` : `关于“${topic}”，还能想到别的方向吗？`);
+}
+
 function evidenceFor({ participation, diversity, flow, stage, target, semantic }) {
   const evidence = [];
   if (participation.score < 58 && target) evidence.push(`${target} 在最近观察窗口中的参与明显低于其他成员。`);

@@ -11,6 +11,15 @@
   <body>
     <header class="topbar">
       <a class="brand" href="#"><span class="brand-mark">M</span><span>MooTu</span><small>Agent Lab</small></a>
+      <section id="stageFocus" class="header-stage" aria-label="当前讨论阶段">
+        <strong id="stageTitle" class="visually-hidden">发散探索</strong>
+        <div class="stage-switch">
+          <button class="active" data-stage="diverge"><small>01</small> 发散探索</button>
+          <span class="stage-arrow" aria-hidden="true">→</span>
+          <button data-stage="converge"><small>02</small> 收敛决策</button>
+        </div>
+        <p id="stageReason" class="visually-hidden">扩大参与和想法空间，暂不急于形成结论。</p>
+      </section>
       <div class="header-actions">
         <span id="modelBadge" class="status-pill"><i></i>检查模型中</span>
         <button id="configBtn" class="button ghost">动作配置</button>
@@ -25,41 +34,46 @@
           <h1>看见讨论如何发生，<br /><span>再决定是否介入。</span></h1>
           <p class="hero-copy">MooTu 以可验证的证据理解群体状态，在发散与收敛之间持续观察、判断、行动和复盘。</p>
         </div>
-        <div class="stage-switch" aria-label="讨论阶段">
-          <button class="active" data-stage="diverge">发散</button>
-          <span class="stage-arrow" aria-hidden="true">→</span>
-          <button data-stage="converge">收敛</button>
-        </div>
       </section>
-
-      <div id="transitionNotice" class="transition-notice" role="status" aria-live="polite"><span id="transitionKind">决策更新</span><strong id="transitionTitle">保持观察</strong></div>
 
       <section class="workspace-grid">
         <article class="panel input-panel">
           <div class="panel-head">
             <div><span class="step">01</span><h2>讨论现场</h2></div>
             <div class="input-actions">
+              <button id="liveBtn" class="live-button" type="button"><i></i>开启现场模式</button>
               <label class="upload">导入视频<input id="videoInput" type="file" accept="video/*" /></label>
               <label class="upload transcript-upload">上传逐字稿<input id="transcriptInput" type="file" accept=".json,.txt,application/json,text/plain" /></label>
             </div>
           </div>
           <div class="video-stage">
-            <video id="video" controls hidden></video>
+            <video id="video" controls playsinline hidden></video>
             <div id="videoPlaceholder" class="video-placeholder">
               <div class="table-scene" aria-hidden="true">
                 <span class="person p1">A</span><span class="person p2">B</span><span class="person p3">C</span>
                 <span class="core-bot"><b></b><em></em></span>
               </div>
               <strong>模拟讨论场景</strong>
-              <span>导入视频，或使用时间轴预览 Agent 行为</span>
+              <span>开启摄像头与麦克风，或导入材料进行回放</span>
             </div>
+          </div>
+          <div id="liveSignals" class="live-signals" hidden>
+            <div class="live-signal-head"><strong><i></i>现场信号</strong><span>实时计算 · 不推断心理或生理状态</span></div>
+            <div class="signal-grid">
+              <div><span>声音</span><b id="audioSignal">等待信号</b></div>
+              <div><span>连续沉默</span><b id="silenceSignal">0 秒</b></div>
+              <div><span>画面运动</span><b id="motionSignal">等待画面</b></div>
+              <div><span>画面亮度</span><b id="brightnessSignal">等待画面</b></div>
+            </div>
+            <div class="live-caption"><span>实时识别</span><strong id="liveTranscript">浏览器支持时将在这里显示语音识别结果</strong></div>
+            <small class="privacy-note">摄像头和音频信号在当前页面计算；语音识别的处理位置取决于浏览器实现。目前不提供多人说话人分离。</small>
           </div>
           <div class="playback-row">
             <button id="playBtn" class="round-button" aria-label="播放">▶</button>
-            <div class="scrubber"><input id="scrubber" type="range" min="0" max="260" value="0" /><div><span id="currentTime">00:00</span><span id="duration">00:52 · 5×</span></div></div>
+            <div class="scrubber"><input id="scrubber" type="range" min="0" max="260" value="0" /><div><span id="currentTime">00:00</span><span id="duration">04:20</span></div></div>
           </div>
           <div class="transcript-card">
-            <div class="transcript-heading"><div class="section-label">连续逐字稿</div><span>最近 6 条 · 自动上滚</span></div>
+            <div class="transcript-heading"><div id="transcriptTitle" class="section-label">连续逐字稿</div><span id="transcriptHint">最近 6 条 · 超出后自动上滚</span></div>
             <div id="transcriptFeed" class="transcript-feed" aria-live="polite"></div>
           </div>
           <div id="participants" class="participants"></div>
@@ -67,34 +81,32 @@
 
         <article class="panel reasoning-panel">
           <div class="panel-head"><div><span class="step">02</span><h2>Agent 判断</h2></div><span id="decisionStatus" class="decision-tag calm">持续观察</span></div>
-          <div class="cycle" aria-label="Agent 决策循环">
+          <div class="decision-card">
+            <div><span class="section-label">本轮决策</span><h3 id="decisionTitle">保持观察</h3></div>
+            <p id="decisionReason">当前没有足够证据支持介入。</p>
+            <div class="follow-up"><span>下一步</span><b id="followUp">继续观察讨论变化</b></div>
+          </div>
+          <div id="decisionCycle" class="cycle" aria-label="Agent 决策循环">
             <span class="active">观察</span><i>→</i><span>判断</span><i>→</i><span>介入</span><i>→</i><span>反馈</span>
           </div>
           <div class="state-block">
             <div class="section-label">群体状态</div>
             <div class="metrics">
-              <div><span>参与开放性 <small>时长 70% · 轮次 30%</small></span><strong id="participationLabel">等待数据</strong><div id="participationStates" class="state-scale"><i>失衡</i><i>需关注</i><i>均衡</i></div></div>
-              <div><span>创意发散性</span><strong id="diversityLabel">等待数据</strong><div id="diversityStates" class="state-scale"><i>收缩</i><i>拓展中</i><i>发散中</i></div></div>
-              <div><span>讨论流动性</span><strong id="flowLabel">等待数据</strong><div id="flowStates" class="state-scale"><i>停滞</i><i>思考停顿</i><i>流动</i></div></div>
+              <div id="participationState" class="metric-row"><span>参与开放性</span><div id="participationStates" class="state-scale"><i>不开放</i><i>偏不开放</i><i>偏开放</i><i>开放</i></div></div>
+              <div id="diversityState" class="metric-row"><span>创意发散性</span><div id="diversityStates" class="state-scale"><i>收束</i><i>偏收束</i><i>偏发散</i><i>发散</i></div></div>
+              <div id="flowState" class="metric-row"><span>讨论流动性</span><div id="flowStates" class="state-scale"><i>停滞</i><i>偏停滞</i><i>偏流动</i><i>流动</i></div></div>
             </div>
           </div>
           <div class="evidence-block">
             <div class="section-label">可验证依据</div>
             <ul id="evidenceList"><li>加载示例后，决策依据会随时间更新。</li></ul>
           </div>
-          <div class="decision-card">
-            <div><span class="section-label">本轮决策</span><h3 id="decisionTitle">保持观察</h3></div>
-            <p id="decisionReason">当前没有足够证据支持介入。</p>
-            <div class="follow-up"><span>下一步</span><b id="followUp">继续观察讨论变化</b></div>
-          </div>
         </article>
 
         <article class="panel output-panel">
           <div class="panel-head"><div><span class="step">03</span><h2>具身输出</h2></div><button id="jsonBtn" class="text-button">查看 JSON</button></div>
           <div class="robot-visual">
-            <div class="member member-a" data-member="A"><span>A</span><small>林然</small></div>
-            <div class="member member-b" data-member="B"><span>B</span><small>嘉宁</small></div>
-            <div class="member member-c" data-member="C"><span>C</span><small>子墨</small></div>
+            <div id="memberRing" class="member-ring" aria-label="讨论成员位置"></div>
             <div id="focusArrow" class="focus-arrow"><i></i><span id="focusLabel">朝向 C</span></div>
             <div id="agentSpeech" class="agent-speech" aria-live="polite"><small>MooTu 说</small><strong id="agentSpeechText"></strong></div>
             <div id="robot" class="robot listening">
@@ -111,10 +123,6 @@
         </article>
       </section>
 
-      <section class="timeline-panel">
-        <div class="timeline-head"><div><span class="step">04</span><h2>决策时间轴</h2></div><p>点击事件查看 Agent 当时的判断</p></div>
-        <div id="timeline" class="timeline"></div>
-      </section>
     </main>
 
     <dialog id="jsonDialog"><div class="dialog-head"><h2>结构化决策</h2><button data-close>×</button></div><pre id="jsonOutput"></pre></dialog>

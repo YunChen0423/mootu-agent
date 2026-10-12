@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
-import { runAgent } from "./public/agent-engine.js";
+import { generateContextualUtterance, runAgent } from "./public/agent-engine.js";
 
 const root = join(process.cwd(), "public");
 const port = Number(process.env.PORT || 4173);
@@ -56,6 +56,37 @@ async function analyzeWithDeepSeek(payload, checkpoints) {
   return JSON.parse(result.choices?.[0]?.message?.content || "{}");
 }
 
+async function generateMessage(payload) {
+  const localUtterance = generateContextualUtterance(payload);
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey || payload.strategy === "observe") return { mode: "local", utterance: localUtterance };
+  const baseUrl = (process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com").replace(/\/$/, "");
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: process.env.DEEPSEEK_MODEL || "deepseek-chat",
+      response_format: { type: "json_object" },
+      temperature: 0.45,
+      max_tokens: 120,
+      messages: [
+        {
+          role: "system",
+          content: "你是 MooTu 小组讨论主持机器人。根据最近的真实讨论生成一句自然、具体、简短的中文介入语。不得捏造讨论中未出现的事实，不输出分析过程，不超过45个汉字。严格输出 JSON：{\"utterance\":string}。"
+        },
+        {
+          role: "user",
+          content: `阶段：${payload.stage}\n策略：${payload.strategy}\n目标成员：${payload.target || "无"}\n最近讨论：${JSON.stringify((payload.transcript || []).slice(-6))}`
+        }
+      ]
+    })
+  });
+  if (!response.ok) throw new Error(`DeepSeek ${response.status}: ${await response.text()}`);
+  const result = await response.json();
+  const parsed = JSON.parse(result.choices?.[0]?.message?.content || "{}");
+  return { mode: "deepseek", utterance: String(parsed.utterance || localUtterance).trim().slice(0, 80) };
+}
+
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -84,6 +115,12 @@ const server = createServer(async (req, res) => {
         semantic
       });
       return json(res, 200, { mode: semantic ? "deepseek" : "local", analysis, events: analysis.events });
+    }
+    if (req.method === "POST" && url.pathname === "/api/generate-message") {
+      const payload = await readBody(req);
+      if (!Array.isArray(payload.transcript)) return json(res, 400, { error: "transcript 必须是数组" });
+      if (!payload.strategy) return json(res, 400, { error: "strategy 不能为空" });
+      return json(res, 200, await generateMessage(payload));
     }
 
     let requested = url.pathname === "/" ? "/index.html" : url.pathname;
