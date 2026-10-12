@@ -107,3 +107,10 @@ test("embodied scene supports five dynamic members and target-specific orientati
   assert.match(enhancements, /--member-x/);
   assert.match(enhancements, /rotate\(var\(--focus-angle/);
 });
+
+test("AI analysis starts automatically and the button is only a retry", () => {
+  assert.match(html, />重新分析<\/button>/);
+  assert.match(app, /runFullAgentAnalysis\(\{ automatic: true \}\)/);
+  assert.match(app, /loadImportedTranscript[\s\S]*runFullAgentAnalysis\(\{ automatic: true \}\)/);
+  assert.doesNotMatch(html, />运行 AI Agent<\/button>/);
+});
