@@ -3,7 +3,7 @@ import { createLiveSensing } from "./live-sensing.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const state = { session: null, config: null, events: [], time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "local", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null };
+const state = { session: null, config: null, events: [], time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0 };
 
 const formatTime = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
@@ -25,9 +25,10 @@ async function load() {
     fetch("/data/sample-session.json").then((r) => r.json()),
     fetch("/config/actions.json").then((r) => r.json())
   ]);
-  const status = await fetch("/api/status").then((r) => r.json()).catch(() => ({ mode: "local" }));
+  const status = await fetch("/api/status").then((r) => r.json()).catch(() => ({ mode: "fallback" }));
   state.model = status.mode;
-  $("#modelBadge").innerHTML = `<i></i>${status.mode === "deepseek" ? `DeepSeek · ${status.model}` : "本地策略 Agent · 可运行"}`;
+  $("#modelBadge").classList.toggle("fallback", status.mode !== "deepseek");
+  $("#modelBadge").innerHTML = `<i></i>${status.mode === "deepseek" ? `DeepSeek AI Agent · 已连接` : "AI 未配置 · 安全回退"}`;
   state.events = runAgent({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration, config: state.config }).events;
   renderStatic();
   setTime(0);
@@ -298,6 +299,10 @@ function renderDecision(event, eventIndex, time) {
   $("#decisionTitle").textContent = event.title;
   $("#decisionReason").textContent = event.reason;
   $("#followUp").textContent = event.followUp;
+  $("#decisionSource").textContent = event.decisionSource === "deepseek" ? "DeepSeek 策略决策" : "规则安全回退";
+  $("#expectedEffect").textContent = event.expectedEffect || event.followUp;
+  $("#reflectionText").textContent = event.reflection || "等待下一观察窗口验证";
+  $("#memoryCount").textContent = `${Math.max(0, eventIndex)} 条`;
   $("#evidenceList").innerHTML = event.evidence.map((item) => `<li>${item}</li>`).join("");
   const hasDiscussionEvidence = event.time > 0;
   setMetric("participation", event.metrics.participation, ["不开放", "偏不开放", "偏开放", "开放"], event.stage, hasDiscussionEvidence);
@@ -313,13 +318,13 @@ function renderDecision(event, eventIndex, time) {
   const contextLines = state.session.transcript.filter((line) => line.start <= time).slice(-6);
   const utteranceKey = `replay:${event.time}:${event.strategy}:${event.target || "group"}`;
   const renderedAction = event.target ? { ...action, orient: `朝向 ${event.target}` } : action;
-  const utterance = contextualUtterance({ key: utteranceKey, strategy: event.strategy, target: event.target, stage: event.stage, transcript: contextLines, action: renderedAction });
+  const utterance = event.utterance || contextualUtterance({ key: utteranceKey, strategy: event.strategy, target: event.target, stage: event.stage, transcript: contextLines, action: renderedAction });
   applyActionOutput(renderedAction, utterance);
   const pod = event.target ? state.config.pod.responses.low_participation : state.config.pod.responses.normal;
   $("#podTarget").textContent = event.target ? `Pod ${event.target} · 个体鼓励` : "群体陪伴";
   $("#podActions").textContent = `${pod.temperature} · ${pod.vibration} · ${pod.breathing}`;
   $("#podOrb").classList.toggle("active", Boolean(event.target));
-  $("#jsonOutput").textContent = JSON.stringify({ timestamp: formatPresentationTime(event.time), source_timestamp: formatTime(event.time), playback_speed: timelineSpeed(), stage: event.stage, observation: { evidence: event.evidence }, assessment: event.metrics, decision: { intervene: intervening, strategy: event.strategy, reason: event.reason }, actions: { core: { ...renderedAction, display: utterance }, pod: event.target ? { target: event.target, ...pod } : pod }, follow_up: event.followUp }, null, 2);
+  $("#jsonOutput").textContent = JSON.stringify({ timestamp: formatPresentationTime(event.time), source_timestamp: formatTime(event.time), playback_speed: timelineSpeed(), stage: event.stage, observation: { evidence: event.evidence }, assessment: event.metrics, decision: { source: event.decisionSource, intervene: intervening, strategy: event.strategy, target: event.target, reason: event.reason, expected_effect: event.expectedEffect }, memory: { previous_outcome: event.reflection, entries: eventIndex }, actions: { core: { ...renderedAction, display: utterance }, pod: event.target ? { target: event.target, ...pod } : pod }, follow_up: event.followUp }, null, 2);
 }
 
 function metricTarget(name, stage) {
@@ -426,6 +431,36 @@ function renderLiveJudgment(signal) {
   renderLiveAction(decision.strategy);
   renderDecisionCycle(decision.strategy !== "observe", decision.strategy === "observe" ? 1 : 2);
   if (previous) announceLiveTransition(liveState, decision.title);
+  requestLiveAIDecision(signal, decision);
+}
+
+async function requestLiveAIDecision(signal, fallbackDecision) {
+  if (state.model !== "deepseek") {
+    $("#decisionSource").textContent = "规则安全回退";
+    return;
+  }
+  const requestId = ++state.liveRequestId;
+  try {
+    const result = await fetch("/api/agent/decide", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ transcript: state.liveLines, participants: state.session.participants, stage: document.body.dataset.stage || "diverge", signal, memory: state.agentMemory }) }).then(async (response) => { if (!response.ok) throw new Error((await response.json()).error); return response.json(); });
+    if (requestId !== state.liveRequestId || !result.decision) return;
+    const decision = result.decision;
+    state.agentMemory.push({ at: Date.now(), strategy: decision.strategy, expectedEffect: decision.expectedEffect });
+    state.agentMemory = state.agentMemory.slice(-8);
+    document.body.dataset.stage = decision.stage;
+    $("#decisionTitle").textContent = decision.title;
+    $("#decisionReason").textContent = decision.reason;
+    $("#followUp").textContent = decision.followUp;
+    $("#decisionSource").textContent = "DeepSeek 策略决策";
+    $("#expectedEffect").textContent = decision.expectedEffect;
+    $("#reflectionText").textContent = state.agentMemory.length > 1 ? "已保留上一轮动作，等待新信号验证" : "首次 AI 决策";
+    $("#memoryCount").textContent = `${state.agentMemory.length} 条`;
+    $("#evidenceList").innerHTML = (decision.evidence.length ? decision.evidence : [decision.reason]).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+    renderLiveAction(decision.strategy);
+    if (decision.utterance) applyActionOutput(state.config.core.strategies[decision.strategy], decision.utterance);
+  } catch (error) {
+    $("#decisionSource").textContent = "AI 请求失败 · 安全回退";
+    $("#expectedEffect").textContent = fallbackDecision.followUp;
+  }
 }
 
 function announceLiveTransition(liveState, title) {
@@ -580,7 +615,10 @@ $("#analyzeBtn").addEventListener("click", async () => {
     state.events = result.events;
     renderStatic();
     setTime(0);
-    toast(`${result.mode === "deepseek" ? "DeepSeek + 策略引擎" : "本地策略引擎"}分析完成：${result.analysis.summary}`);
+    state.model = result.mode;
+    $("#modelBadge").classList.toggle("fallback", result.mode !== "deepseek");
+    $("#modelBadge").innerHTML = `<i></i>${result.mode === "deepseek" ? "DeepSeek AI Agent · 已连接" : "AI 未配置 · 安全回退"}`;
+    toast(`${result.mode === "deepseek" ? "DeepSeek AI Agent" : "规则安全回退"}完成：${result.analysis.summary}`);
   } catch (error) {
     if (state.model !== "deepseek") {
       const local = runAgent({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration, config: state.config });
@@ -592,7 +630,7 @@ $("#analyzeBtn").addEventListener("click", async () => {
       toast(`分析失败：${error.message}`);
     }
   }
-  finally { $("#analyzeBtn").disabled = false; $("#analyzeBtn").textContent = "运行分析"; }
+  finally { $("#analyzeBtn").disabled = false; $("#analyzeBtn").textContent = "运行 AI Agent"; }
 });
 $("#jsonBtn").addEventListener("click", () => $("#jsonDialog").showModal());
 $("#configBtn").addEventListener("click", () => $("#configDialog").showModal());
