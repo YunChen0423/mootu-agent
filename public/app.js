@@ -301,11 +301,17 @@ function renderDecision(event, eventIndex, time) {
   $("#decisionTitle").textContent = event.title;
   $("#decisionReason").textContent = event.reason;
   $("#followUp").textContent = event.followUp;
-  $("#decisionSource").textContent = event.decisionSource === "deepseek" ? "DeepSeek 策略决策" : "规则安全回退";
+  $("#decisionSource").textContent = event.decisionSource?.startsWith("deepseek") ? "DeepSeek 提案 · Harness 决策" : "规则安全回退";
   $("#expectedEffect").textContent = event.expectedEffect || event.followUp;
   $("#reflectionText").textContent = event.reflection || "等待下一观察窗口验证";
   $("#memoryCount").textContent = `${Math.max(0, eventIndex)} 条`;
-  $("#evidenceList").innerHTML = event.evidence.map((item) => `<li>${item}</li>`).join("");
+  const gaps = event.missingEvidence || [];
+  $("#decisionConfidence").textContent = Number.isFinite(event.confidence) ? `${event.confidence}%${gaps.length ? ` · 缺 ${gaps.length} 项证据` : ""}` : "—";
+  $("#decisionConfidence").title = gaps.join("；");
+  $("#candidateSummary").textContent = event.candidates?.length
+    ? event.candidates.map((candidate) => `${state.config.core.strategies[candidate.strategy]?.label || candidate.strategy} ${candidate.utility ?? "—"}`).join(" / ")
+    : "单路径规则";
+  $("#evidenceList").innerHTML = event.evidence.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
   const hasDiscussionEvidence = event.time > 0;
   setMetric("participation", event.metrics.participation, ["不开放", "偏不开放", "偏开放", "开放"], event.stage, hasDiscussionEvidence);
   setMetric("diversity", event.metrics.diversity, ["收束", "偏收束", "偏发散", "发散"], event.stage, hasDiscussionEvidence);
@@ -326,7 +332,7 @@ function renderDecision(event, eventIndex, time) {
   $("#podTarget").textContent = event.target ? `Pod ${event.target} · 个体鼓励` : "群体陪伴";
   $("#podActions").textContent = `${pod.temperature} · ${pod.vibration} · ${pod.breathing}`;
   $("#podOrb").classList.toggle("active", Boolean(event.target));
-  $("#jsonOutput").textContent = JSON.stringify({ timestamp: formatPresentationTime(event.time), source_timestamp: formatTime(event.time), playback_speed: timelineSpeed(), stage: event.stage, observation: { evidence: event.evidence }, assessment: event.metrics, decision: { source: event.decisionSource, intervene: intervening, strategy: event.strategy, target: event.target, reason: event.reason, expected_effect: event.expectedEffect }, memory: { previous_outcome: event.reflection, entries: eventIndex }, actions: { core: { ...renderedAction, display: utterance }, pod: event.target ? { target: event.target, ...pod } : pod }, follow_up: event.followUp }, null, 2);
+  $("#jsonOutput").textContent = JSON.stringify({ timestamp: formatPresentationTime(event.time), source_timestamp: formatTime(event.time), playback_speed: timelineSpeed(), stage: event.stage, stage_control: { recommendation: event.stageRecommendation, consecutive_votes: event.stageVotes }, observation: { evidence: event.evidence, missing_evidence: gaps }, assessment: event.metrics, decision: { source: event.decisionSource, intervene: intervening, strategy: event.strategy, target: event.target, reason: event.reason, confidence: event.confidence, expected_effect: event.expectedEffect, selection_margin: event.selectionMargin, candidate_evaluation: event.candidates }, memory: { previous_outcome: event.reflection, entries: eventIndex }, actions: { core: { ...renderedAction, display: utterance }, pod: event.target ? { target: event.target, ...pod } : pod }, follow_up: event.followUp }, null, 2);
 }
 
 function metricTarget(name, stage) {
@@ -439,6 +445,8 @@ function renderLiveJudgment(signal) {
 async function requestLiveAIDecision(signal, fallbackDecision) {
   if (state.model !== "deepseek") {
     $("#decisionSource").textContent = "规则安全回退";
+    $("#decisionConfidence").textContent = "规则判断";
+    $("#candidateSummary").textContent = "等待 AI 候选";
     return;
   }
   const requestId = ++state.liveRequestId;
@@ -446,22 +454,28 @@ async function requestLiveAIDecision(signal, fallbackDecision) {
     const result = await fetch("/api/agent/decide", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ transcript: state.liveLines, participants: state.session.participants, stage: document.body.dataset.stage || "diverge", signal, memory: state.agentMemory }) }).then(async (response) => { if (!response.ok) throw new Error((await response.json()).error); return response.json(); });
     if (requestId !== state.liveRequestId || !result.decision) return;
     const decision = result.decision;
-    state.agentMemory.push({ at: Date.now(), strategy: decision.strategy, expectedEffect: decision.expectedEffect });
+    state.agentMemory.push({ at: Date.now(), strategy: decision.strategy, expectedEffect: decision.expectedEffect, stageVotes: decision.stageVotes });
     state.agentMemory = state.agentMemory.slice(-8);
     document.body.dataset.stage = decision.stage;
     $("#decisionTitle").textContent = decision.title;
     $("#decisionReason").textContent = decision.reason;
     $("#followUp").textContent = decision.followUp;
-    $("#decisionSource").textContent = "DeepSeek 策略决策";
+    $("#decisionSource").textContent = "DeepSeek 提案 · Harness 决策";
     $("#expectedEffect").textContent = decision.expectedEffect;
     $("#reflectionText").textContent = state.agentMemory.length > 1 ? "已保留上一轮动作，等待新信号验证" : "首次 AI 决策";
     $("#memoryCount").textContent = `${state.agentMemory.length} 条`;
+    const gaps = decision.missingEvidence || [];
+    $("#decisionConfidence").textContent = `${decision.confidence ?? "—"}%${gaps.length ? ` · 缺 ${gaps.length} 项证据` : ""}`;
+    $("#decisionConfidence").title = gaps.join("；");
+    $("#candidateSummary").textContent = decision.candidates?.map((candidate) => `${state.config.core.strategies[candidate.strategy]?.label || candidate.strategy} ${candidate.utility}`).join(" / ") || "等待候选";
     $("#evidenceList").innerHTML = (decision.evidence.length ? decision.evidence : [decision.reason]).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
     renderLiveAction(decision.strategy);
     if (decision.utterance) applyActionOutput(state.config.core.strategies[decision.strategy], decision.utterance);
   } catch (error) {
     $("#decisionSource").textContent = "AI 请求失败 · 安全回退";
     $("#expectedEffect").textContent = fallbackDecision.followUp;
+    $("#decisionConfidence").textContent = "—";
+    $("#candidateSummary").textContent = "请求失败";
   }
 }
 
@@ -614,6 +628,8 @@ async function runFullAgentAnalysis({ automatic = false } = {}) {
   $("#analyzeBtn").disabled = true;
   $("#analyzeBtn").textContent = "AI 分析中…";
   $("#decisionSource").textContent = "DeepSeek 正在分析";
+  $("#decisionConfidence").textContent = "计算中…";
+  $("#candidateSummary").textContent = "生成并比较候选策略…";
   try {
     const result = await fetch("/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration }) }).then(async (r) => { if (!r.ok) throw new Error((await r.json()).error); return r.json(); });
     if (requestId !== state.analysisRequestId) return;

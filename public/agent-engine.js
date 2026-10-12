@@ -191,7 +191,13 @@ export function runAgent({ transcript, participants = [], duration, config, sema
       metrics: observation.metrics,
       title: decision.title, reason: evidence.join(" "), followUp: decision.followUp, target: decision.target || null,
       diagnostics: observation.diagnostics,
-      decisionSource: "rule_fallback", expectedEffect: decision.followUp, reflection: index ? "等待下一观察窗口验证" : "尚无上一轮行动"
+      decisionSource: "rule_fallback", expectedEffect: decision.followUp, reflection: index ? "等待下一观察窗口验证" : "尚无上一轮行动",
+      confidence: index ? 65 : 40,
+      missingEvidence: index ? ["未接入语义模型，当前仅使用可解释规则"] : ["尚无讨论内容"],
+      candidates: [{ strategy: decision.strategy, target: decision.target || null, utility: 65, confidence: index ? 65 : 40 }],
+      selectionMargin: 0,
+      stageRecommendation: stage,
+      stageVotes: 0
     };
     previousStage = stage;
     return event;
