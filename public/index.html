@@ -121,10 +121,15 @@
             </div>
             <button id="mujocoBtn" class="mujoco-button" type="button">连接 MuJoCo</button>
           </div>
+          <div id="mujocoScreen" class="mujoco-screen">
+            <img id="mujocoViewport" alt="MuJoCo 实时仿真画面" />
+            <div class="mujoco-placeholder"><span>MJ</span><strong>MuJoCo 实时画面</strong><small>启动桥接器并连接后显示</small></div>
+            <div class="mujoco-screen-bar"><span><i></i> LIVE SIMULATION</span><b id="mujocoStrategy">observe</b></div>
+            <div id="agentSpeech" class="agent-speech" aria-live="polite"><small>MooTu 说</small><strong id="agentSpeechText"></strong></div>
+          </div>
           <div class="robot-visual">
             <div id="memberRing" class="member-ring" aria-label="讨论成员位置"></div>
             <div id="focusArrow" class="focus-arrow"><i></i><span id="focusLabel">朝向 C</span></div>
-            <div id="agentSpeech" class="agent-speech" aria-live="polite"><small>MooTu 说</small><strong id="agentSpeechText"></strong></div>
             <div id="robot" class="robot listening">
               <div class="antenna"></div><div class="head"><div class="face"><i></i><i></i></div></div><div class="neck"></div><div class="body"><span></span></div>
             </div>

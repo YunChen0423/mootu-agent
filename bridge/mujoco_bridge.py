@@ -12,10 +12,12 @@ from dataclasses import dataclass
 import json
 import math
 from pathlib import Path
+import struct
 import sys
 import threading
 import time
 from typing import Any
+import zlib
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -71,6 +73,52 @@ class CommandState:
     def read(self) -> Command:
         with self._lock:
             return self._command
+
+
+class FrameHub:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._connections: set[Any] = set()
+        self._last_frame: bytes | None = None
+
+    def register(self, connection: Any) -> None:
+        with self._lock:
+            self._connections.add(connection)
+            frame = self._last_frame
+        if frame:
+            connection.send(frame)
+
+    def unregister(self, connection: Any) -> None:
+        with self._lock:
+            self._connections.discard(connection)
+
+    def broadcast(self, frame: bytes) -> None:
+        with self._lock:
+            self._last_frame = frame
+            connections = tuple(self._connections)
+        failed = []
+        for connection in connections:
+            try:
+                connection.send(frame)
+            except Exception:
+                failed.append(connection)
+        if failed:
+            with self._lock:
+                for connection in failed:
+                    self._connections.discard(connection)
+
+
+def encode_png(rgb: Any) -> bytes:
+    """Encode a uint8 RGB MuJoCo frame with only the Python standard library."""
+    height, width, channels = rgb.shape
+    if channels != 3:
+        raise ValueError("renderer frame must be RGB")
+    raw = b"".join(b"\x00" + rgb[row].tobytes() for row in range(height))
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw, 3)) + chunk(b"IEND", b"")
 
 
 def parse_command(raw: str) -> Command:
@@ -163,24 +211,30 @@ def apply_target_light(model: Any, command: Command) -> None:
         )
 
 
-def start_socket_server(state: CommandState, host: str, port: int) -> threading.Thread:
+def start_socket_server(state: CommandState, frames: FrameHub, host: str, port: int) -> threading.Thread:
     from websockets.sync.server import serve
 
     def handler(connection: Any) -> None:
         last_sequence = 0
         connection.send(json.dumps({"type": "mootu.status", "message": "桥接器在线，等待动作"}, ensure_ascii=False))
-        for raw in connection:
-            try:
-                command = parse_command(raw)
-                accepted = command.sequence > last_sequence
-                if accepted:
-                    last_sequence = command.sequence
-                    state.update(command)
-                message = f"已执行 {command.strategy}" if accepted else "已忽略过期指令"
-                print(f"[{command.sequence}] {command.strategy} target={command.target or '-'} {command.utterance}")
-                connection.send(json.dumps({"type": "mootu.status", "sequence": command.sequence, "message": message}, ensure_ascii=False))
-            except (ValueError, TypeError, json.JSONDecodeError) as error:
-                connection.send(json.dumps({"type": "mootu.error", "message": str(error)}, ensure_ascii=False))
+        frames.register(connection)
+        try:
+            for raw in connection:
+                if not isinstance(raw, str):
+                    continue
+                try:
+                    command = parse_command(raw)
+                    accepted = command.sequence > last_sequence
+                    if accepted:
+                        last_sequence = command.sequence
+                        state.update(command)
+                    message = f"已执行 {command.strategy}" if accepted else "已忽略过期指令"
+                    print(f"[{command.sequence}] {command.strategy} target={command.target or '-'} {command.utterance}")
+                    connection.send(json.dumps({"type": "mootu.status", "sequence": command.sequence, "message": message}, ensure_ascii=False))
+                except (ValueError, TypeError, json.JSONDecodeError) as error:
+                    connection.send(json.dumps({"type": "mootu.error", "message": str(error)}, ensure_ascii=False))
+        finally:
+            frames.unregister(connection)
 
     def run() -> None:
         with serve(handler, host, port, max_size=32_768) as server:
@@ -207,7 +261,8 @@ def run_simulation(model_path: Path, host: str, port: int, headless: bool, durat
 
     model, data = load_model(model_path)
     state = CommandState()
-    start_socket_server(state, host, port)
+    frames = FrameHub()
+    start_socket_server(state, frames, host, port)
     while data.time < 0.5:
         mujoco.mj_step(model, data)
 
@@ -227,31 +282,25 @@ def run_simulation(model_path: Path, host: str, port: int, headless: bool, durat
         apply_target_light(model, command)
         mujoco.mj_step(model, data)
 
-    if headless:
+    camera = mujoco.MjvCamera()
+    camera.type = mujoco.mjtCamera.mjCAMERA_FREE
+    camera.lookat[:] = (0.0, 0.0, 0.005)
+    camera.distance = 0.17
+    camera.azimuth = -90
+    camera.elevation = -62
+    renderer = mujoco.Renderer(model, height=270, width=480)
+    next_frame = time.monotonic()
+    try:
         while duration is None or time.monotonic() - started < duration:
-            step()
-            time.sleep(max(0.0, model.opt.timestep))
-        return
-
-    import mujoco.viewer
-
-    with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui=False) as viewer:
-        with viewer.lock():
-            viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
-            viewer.cam.lookat[:] = (0.0, 0.0, 0.005)
-            viewer.cam.distance = 0.17
-            viewer.cam.azimuth = -90
-            viewer.cam.elevation = -62
-        next_frame = time.monotonic()
-        while viewer.is_running() and (duration is None or time.monotonic() - started < duration):
             target_time = data.time + 1.0 / 60.0
             while data.time < target_time:
                 step()
-            with viewer.lock():
-                viewer.opt.geomgroup[:] = 1
-            viewer.sync()
-            next_frame += 1.0 / 60.0
+            renderer.update_scene(data, camera=camera)
+            frames.broadcast(encode_png(renderer.render()))
+            next_frame += 1.0 / 12.0
             time.sleep(max(0.0, next_frame - time.monotonic()))
+    finally:
+        renderer.close()
 
 
 def main() -> None:

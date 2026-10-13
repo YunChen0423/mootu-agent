@@ -3,7 +3,7 @@ import { createLiveSensing } from "./live-sensing.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const state = { session: null, config: null, events: [], agentTrace: [], agentExecution: null, time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoSocket: null, mujocoCommandKey: null, mujocoSequence: 0, mujocoManualClose: false };
+const state = { session: null, config: null, events: [], agentTrace: [], agentExecution: null, time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoSocket: null, mujocoCommandKey: null, mujocoSequence: 0, mujocoManualClose: false, mujocoFrameUrl: null };
 
 const formatTime = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
@@ -277,6 +277,17 @@ function setMujocoStatus(status, detail, connected = false) {
   $("#mujocoBtn").textContent = connected ? "断开" : "连接 MuJoCo";
 }
 
+function renderMujocoFrame(blob) {
+  const viewport = $("#mujocoViewport");
+  const nextUrl = URL.createObjectURL(blob);
+  viewport.onload = () => {
+    if (state.mujocoFrameUrl) URL.revokeObjectURL(state.mujocoFrameUrl);
+    state.mujocoFrameUrl = nextUrl;
+    $("#mujocoScreen").classList.add("streaming");
+  };
+  viewport.src = nextUrl;
+}
+
 function connectMujoco() {
   if (state.mujocoSocket?.readyState === WebSocket.OPEN) {
     state.mujocoManualClose = true;
@@ -293,12 +304,17 @@ function connectMujoco() {
     return;
   }
   state.mujocoSocket = socket;
+  socket.binaryType = "blob";
   socket.addEventListener("open", () => {
     state.mujocoCommandKey = null;
     setMujocoStatus("MuJoCo 已连接", "右侧动作正在实时发送到本机仿真", true);
     dispatchMujocoCommand(state.activeEventIndex == null ? null : state.events[state.activeEventIndex], true);
   });
   socket.addEventListener("message", (message) => {
+    if (message.data instanceof Blob) {
+      renderMujocoFrame(message.data);
+      return;
+    }
     try {
       const payload = JSON.parse(message.data);
       if (payload.type === "mootu.status") setMujocoStatus("MuJoCo 已连接", payload.message || "指令已执行", true);
@@ -309,6 +325,10 @@ function connectMujoco() {
   socket.addEventListener("close", () => {
     state.mujocoSocket = null;
     state.mujocoCommandKey = null;
+    $("#mujocoScreen").classList.remove("streaming");
+    $("#mujocoViewport").removeAttribute("src");
+    if (state.mujocoFrameUrl) URL.revokeObjectURL(state.mujocoFrameUrl);
+    state.mujocoFrameUrl = null;
     setMujocoStatus("MuJoCo 未连接", state.mujocoManualClose ? "已断开本地仿真" : "请确认桥接器正在运行", false);
   });
 }
@@ -320,6 +340,7 @@ function dispatchMujocoCommand(event, force = false, utterance = "") {
   if (!force && key === state.mujocoCommandKey) return;
   state.mujocoCommandKey = key;
   const action = state.config.core.strategies[event.strategy] || state.config.core.strategies.observe;
+  $("#mujocoStrategy").textContent = event.strategy;
   socket.send(JSON.stringify({
     type: "mootu.command",
     version: 1,

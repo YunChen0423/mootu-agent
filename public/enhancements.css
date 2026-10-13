@@ -1040,6 +1040,31 @@ body[data-stage="converge"] .metric-row.metric-warning {
 .mujoco-dot.connected { background: #24a47c; box-shadow: 0 0 0 4px rgba(36,164,124,.13); }
 .mujoco-button { border: 0; border-radius: 9px; padding: 7px 10px; background: #292a2d; color: white; font-size: 10px; font-weight: 800; cursor: pointer; white-space: nowrap; }
 
+.mujoco-screen {
+  position: relative;
+  height: 275px;
+  margin: 10px 0 12px;
+  overflow: hidden;
+  border: 1px solid #3d3e41;
+  border-radius: 16px;
+  background: radial-gradient(circle at 50% 42%, #393a3e, #1d1e21 70%);
+  box-shadow: inset 0 0 0 5px #292a2e, 0 12px 26px rgba(20,20,20,.13);
+}
+.mujoco-screen img { width: 100%; height: 100%; display: none; object-fit: cover; }
+.mujoco-screen.streaming img { display: block; }
+.mujoco-placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; }
+.mujoco-placeholder span { display: grid; place-items: center; width: 52px; height: 52px; border: 1px solid #6f7074; border-radius: 15px; color: var(--yellow); font-weight: 900; letter-spacing: -.04em; }
+.mujoco-placeholder strong { margin-top: 11px; font-size: 13px; }
+.mujoco-placeholder small { margin-top: 3px; color: #a7a8aa; font-size: 10px; }
+.mujoco-screen.streaming .mujoco-placeholder { display: none; }
+.mujoco-screen-bar { position: absolute; left: 12px; right: 12px; top: 10px; display: flex; justify-content: space-between; color: white; font-size: 9px; letter-spacing: .08em; text-shadow: 0 1px 4px #000; }
+.mujoco-screen-bar span { display: flex; align-items: center; gap: 6px; }
+.mujoco-screen-bar i { width: 6px; height: 6px; border-radius: 50%; background: #777; }
+.mujoco-screen.streaming .mujoco-screen-bar i { background: #44dc9f; box-shadow: 0 0 7px #44dc9f; }
+.mujoco-screen-bar b { max-width: 54%; overflow: hidden; text-overflow: ellipsis; }
+.mujoco-screen .agent-speech { z-index: 4; top: auto; left: 14px; right: 14px; bottom: 14px; max-width: none; background: rgba(255,255,255,.92); backdrop-filter: blur(9px); }
+.output-panel > .robot-visual { display: none; }
+
 .pod-section::after {
   content: "触觉反馈";
   position: absolute;

@@ -143,7 +143,7 @@ npm run dev
 npm run mujoco:bridge
 ```
 
-桥接器会用 `mootu/.venv` 中的 `mjpython` 打开 `mootu/interaction_demo.xml`，并只监听本机回环地址 `ws://127.0.0.1:8765`。随后在网页的“具身输出”顶部点击“连接 MuJoCo”。回放事件、现场规则判断和 AI 决策切换时，网页会发送版本化的 `mootu.command` 指令。
+桥接器会用 `mootu/.venv` 中的 `mjpython` 离屏运行 `mootu/interaction_demo.xml`，并只监听本机回环地址 `ws://127.0.0.1:8765`。随后在网页的“具身输出”顶部点击“连接 MuJoCo”。MuJoCo 的实时画面会直接显示在右侧小屏幕中，不再打开独立 Viewer 窗口；回放事件、现场规则判断和 AI 决策切换时，网页会通过同一连接发送版本化的 `mootu.command` 指令。
 
 当前映射包括：
 

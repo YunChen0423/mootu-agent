@@ -127,4 +127,6 @@ test("embodied output exposes the local MuJoCo bridge contract", () => {
   assert.match(app, /type: "mootu\.command"/);
   assert.match(app, /version: 1/);
   assert.match(app, /dispatchMujocoCommand\(event/);
+  assert.match(html, /id="mujocoViewport"/);
+  assert.match(app, /message\.data instanceof Blob/);
 });
