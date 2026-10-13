@@ -1,7 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { build } from "esbuild";
 
-const assetNames = ["index.html", "styles.css", "enhancements.css", "app.js", "agent-engine.js", "live-sensing.js", "config/actions.json", "data/sample-session.json"];
+const assetNames = ["index.html", "styles.css", "enhancements.css", "app.js", "agent-engine.js", "live-sensing.js", "browser-mujoco.js", "config/actions.json", "data/sample-session.json"];
 const assets = {};
 for (const name of assetNames) assets[`/${name}`] = await readFile(`public/${name}`, "utf8");
 const config = JSON.parse(assets["/config/actions.json"]);

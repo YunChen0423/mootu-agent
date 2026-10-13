@@ -1,9 +1,10 @@
 import { generateContextualUtterance, runAgent } from "./agent-engine.js";
 import { createLiveSensing } from "./live-sensing.js";
+import { createBrowserMujoco } from "./browser-mujoco.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const state = { session: null, config: null, events: [], agentTrace: [], agentExecution: null, time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoSocket: null, mujocoCommandKey: null, mujocoSequence: 0, mujocoManualClose: false, mujocoFrameUrl: null };
+const state = { session: null, config: null, events: [], agentTrace: [], agentExecution: null, time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoRuntime: null, pendingMujocoAction: null, mujocoCommandKey: null };
 
 const formatTime = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
@@ -21,6 +22,7 @@ const MEMBER_LAYOUTS = {
 };
 
 async function load() {
+  void initBrowserMujoco();
   [state.session, state.config] = await Promise.all([
     fetch("/data/sample-session.json").then((r) => r.json()),
     fetch("/config/actions.json").then((r) => r.json())
@@ -274,83 +276,39 @@ function setMujocoStatus(status, detail, connected = false) {
   $("#mujocoStatus").textContent = status;
   $("#mujocoDetail").textContent = detail;
   $("#mujocoDot").classList.toggle("connected", connected);
-  $("#mujocoBtn").textContent = connected ? "断开" : "连接 MuJoCo";
 }
 
-function renderMujocoFrame(blob) {
-  const viewport = $("#mujocoViewport");
-  const nextUrl = URL.createObjectURL(blob);
-  viewport.onload = () => {
-    if (state.mujocoFrameUrl) URL.revokeObjectURL(state.mujocoFrameUrl);
-    state.mujocoFrameUrl = nextUrl;
-    $("#mujocoScreen").classList.add("streaming");
-  };
-  viewport.src = nextUrl;
-}
-
-function connectMujoco() {
-  if (state.mujocoSocket?.readyState === WebSocket.OPEN) {
-    state.mujocoManualClose = true;
-    state.mujocoSocket.close(1000, "user disconnect");
-    return;
-  }
-  state.mujocoManualClose = false;
-  setMujocoStatus("正在连接 MuJoCo", "本地桥接器 ws://127.0.0.1:8765", false);
-  let socket;
+async function initBrowserMujoco() {
+  setMujocoStatus("MuJoCo WASM 加载中", "正在初始化浏览器物理引擎", false);
   try {
-    socket = new WebSocket("ws://127.0.0.1:8765");
+    state.mujocoRuntime = await createBrowserMujoco({ canvas: $("#mujocoViewport") });
+    $("#mujocoScreen").classList.add("streaming");
+    setMujocoStatus("MuJoCo 在线运行", "浏览器内计算 · 无需本地程序", true);
+    if (state.pendingMujocoAction) state.mujocoRuntime.setAction(state.pendingMujocoAction);
   } catch (error) {
-    setMujocoStatus("MuJoCo 连接失败", error.message, false);
-    return;
+    setMujocoStatus("MuJoCo 加载失败", "请刷新页面或检查网络", false);
+    console.error("MuJoCo WASM initialization failed", error);
   }
-  state.mujocoSocket = socket;
-  socket.binaryType = "blob";
-  socket.addEventListener("open", () => {
-    state.mujocoCommandKey = null;
-    setMujocoStatus("MuJoCo 已连接", "右侧动作正在实时发送到本机仿真", true);
-    dispatchMujocoCommand(state.activeEventIndex == null ? null : state.events[state.activeEventIndex], true);
-  });
-  socket.addEventListener("message", (message) => {
-    if (message.data instanceof Blob) {
-      renderMujocoFrame(message.data);
-      return;
-    }
-    try {
-      const payload = JSON.parse(message.data);
-      if (payload.type === "mootu.status") setMujocoStatus("MuJoCo 已连接", payload.message || "指令已执行", true);
-      if (payload.type === "mootu.error") setMujocoStatus("MuJoCo 指令被拒绝", payload.message || "协议错误", true);
-    } catch {}
-  });
-  socket.addEventListener("error", () => setMujocoStatus("MuJoCo 连接失败", "请先运行 npm run mujoco:bridge", false));
-  socket.addEventListener("close", () => {
-    state.mujocoSocket = null;
-    state.mujocoCommandKey = null;
-    $("#mujocoScreen").classList.remove("streaming");
-    $("#mujocoViewport").removeAttribute("src");
-    if (state.mujocoFrameUrl) URL.revokeObjectURL(state.mujocoFrameUrl);
-    state.mujocoFrameUrl = null;
-    setMujocoStatus("MuJoCo 未连接", state.mujocoManualClose ? "已断开本地仿真" : "请确认桥接器正在运行", false);
-  });
 }
 
 function dispatchMujocoCommand(event, force = false, utterance = "") {
-  const socket = state.mujocoSocket;
-  if (!event || socket?.readyState !== WebSocket.OPEN) return;
+  if (!event) return;
   const key = `${event.time ?? "live"}:${event.strategy}:${event.target || "group"}:${utterance}`;
   if (!force && key === state.mujocoCommandKey) return;
   state.mujocoCommandKey = key;
   const action = state.config.core.strategies[event.strategy] || state.config.core.strategies.observe;
   $("#mujocoStrategy").textContent = event.strategy;
-  socket.send(JSON.stringify({
+  const command = {
     type: "mootu.command",
     version: 1,
-    sequence: ++state.mujocoSequence,
     issued_at: new Date().toISOString(),
     strategy: event.strategy,
     target: event.target || null,
     stage: event.stage || document.body.dataset.stage || "diverge",
     core: { ...action, ...(event.target ? { orient: `朝向 ${event.target}` } : {}), display: utterance || event.utterance || action.display || "" }
-  }));
+  };
+  state.pendingMujocoAction = command;
+  state.mujocoRuntime?.setAction(command);
 }
 
 function contextualUtterance({ key, strategy, target, stage, transcript, action }) {
@@ -777,7 +735,7 @@ async function runFullAgentAnalysis({ automatic = false } = {}) {
 }
 
 $("#analyzeBtn").addEventListener("click", () => runFullAgentAnalysis({ automatic: false }));
-$("#mujocoBtn").addEventListener("click", connectMujoco);
+$("#mujocoResetBtn").addEventListener("click", () => state.mujocoRuntime?.reset());
 $("#jsonBtn").addEventListener("click", () => $("#jsonDialog").showModal());
 $("#configBtn").addEventListener("click", () => $("#configDialog").showModal());
 $$("[data-close]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));

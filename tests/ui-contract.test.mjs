@@ -26,7 +26,7 @@ test("decision card appears before the reasoning cycle", () => {
 });
 
 test("pi tool calls are visible in the agent state", () => {
-  assert.match(html, /id="toolTrace"/);
+  assert.doesNotMatch(html, /class="agent-state"/);
   assert.match(app, /observe_discussion_window/);
   assert.match(app, /dispatch_core_action/);
 });
@@ -121,12 +121,12 @@ test("AI analysis starts automatically and the button is only a retry", () => {
   assert.doesNotMatch(html, />运行 AI Agent<\/button>/);
 });
 
-test("embodied output exposes the local MuJoCo bridge contract", () => {
-  assert.match(html, /id="mujocoBtn"/);
-  assert.match(app, /ws:\/\/127\.0\.0\.1:8765/);
+test("embodied output runs MuJoCo in the browser without a local bridge", () => {
+  assert.match(html, /id="mujocoViewport"/);
+  assert.match(html, /浏览器内运行 · 无需本地程序/);
+  assert.match(app, /createBrowserMujoco/);
   assert.match(app, /type: "mootu\.command"/);
   assert.match(app, /version: 1/);
   assert.match(app, /dispatchMujocoCommand\(event/);
-  assert.match(html, /id="mujocoViewport"/);
-  assert.match(app, /message\.data instanceof Blob/);
+  assert.doesNotMatch(app, /ws:\/\/127\.0\.0\.1:8765/);
 });

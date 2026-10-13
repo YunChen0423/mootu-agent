@@ -135,15 +135,11 @@ npm run dev
 
 打开 [http://localhost:4173](http://localhost:4173)。没有配置 DeepSeek 时，页面会自动使用本地策略模式和内置示例数据。
 
-### 连接 MuJoCo
+### MuJoCo 在线演示
 
-网页右侧“具身输出”可以直接驱动同级 `mootu` 目录中的 MuJoCo 模型。先在另一个终端启动本地桥接器：
+网页右侧“具身输出”会自动加载官方 MuJoCo WebAssembly 运行时，并在浏览器内完成物理计算和 WebGL 渲染。不需要安装 MuJoCo、启动 Python，也不需要连接本机 WebSocket；打开线上网站即可运行。
 
-```bash
-npm run mujoco:bridge
-```
-
-桥接器会用 `mootu/.venv` 中的 `mjpython` 离屏运行 `mootu/interaction_demo.xml`，并只监听本机回环地址 `ws://127.0.0.1:8765`。随后在网页的“具身输出”顶部点击“连接 MuJoCo”。MuJoCo 的实时画面会直接显示在右侧小屏幕中，不再打开独立 Viewer 窗口；回放事件、现场规则判断和 AI 决策切换时，网页会通过同一连接发送版本化的 `mootu.command` 指令。
+为控制首屏下载体积，在线版使用与同级 `mootu/interaction_demo.xml` 行为映射一致的轻量 MJCF 场景，而不是直接下载原模型的全部高精度网格资源。页面首次打开需要联网下载固定版本的 MuJoCo WASM 和 Three.js，加载完成后仿真循环在浏览器本地执行。
 
 当前映射包括：
 
@@ -152,7 +148,9 @@ npm run mujoco:bridge
 - `open_new_direction` / `prepare_convergence`：抬头并进行不同幅度的环视；
 - `sustain_flow` / `advance_decision`：前倾、点头，维持或推进讨论。
 
-成员 `A`–`F` 分别映射到 `interaction_demo.xml` 中的 `pod_1_light`–`pod_6_light`。可以先运行无界面校验：
+成员 `A`–`F` 分别映射到场景中的 `pod_1_light`–`pod_6_light`。右上角“重置仿真”可以把机器人恢复到初始位置。
+
+仓库中的旧版 Python 桥接器仍可用于验证同级 `mootu` 原始模型：
 
 ```bash
 npm run mujoco:validate

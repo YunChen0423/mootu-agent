@@ -86,15 +86,6 @@
             <p id="decisionReason">当前没有足够证据支持介入。</p>
             <div class="follow-up"><span>下一步</span><b id="followUp">继续观察讨论变化</b></div>
           </div>
-          <div class="agent-state" aria-label="AI Agent 内部状态">
-            <div><span>决策来源</span><strong id="decisionSource">安全回退</strong></div>
-            <div><span>预期效果</span><strong id="expectedEffect">等待下一窗口验证</strong></div>
-            <div><span>上轮复盘</span><strong id="reflectionText">尚无上一轮行动</strong></div>
-            <div><span>工作记忆</span><strong id="memoryCount">0 条</strong></div>
-            <div><span>决策置信度</span><strong id="decisionConfidence">—</strong></div>
-            <div><span>候选比较</span><strong id="candidateSummary">等待分析</strong></div>
-            <div class="tool-state"><span>工具调用</span><strong id="toolTrace">规则引擎 · 无工具调用</strong></div>
-          </div>
           <div id="decisionCycle" class="cycle" aria-label="Agent 决策循环">
             <span class="active">观察</span><i>→</i><span>判断</span><i>→</i><span>介入</span><i>→</i><span>反馈</span>
           </div>
@@ -117,12 +108,12 @@
           <div class="mujoco-link" aria-live="polite">
             <div>
               <span id="mujocoDot" class="mujoco-dot"></span>
-              <div><strong id="mujocoStatus">MuJoCo 未连接</strong><small id="mujocoDetail">启动本地桥接器后点击连接</small></div>
+              <div><strong id="mujocoStatus">MuJoCo WASM 加载中</strong><small id="mujocoDetail">浏览器内运行 · 无需本地程序</small></div>
             </div>
-            <button id="mujocoBtn" class="mujoco-button" type="button">连接 MuJoCo</button>
+            <button id="mujocoResetBtn" class="mujoco-button" type="button">重置仿真</button>
           </div>
           <div id="mujocoScreen" class="mujoco-screen">
-            <img id="mujocoViewport" alt="MuJoCo 实时仿真画面" />
+            <canvas id="mujocoViewport" aria-label="MuJoCo 实时仿真画面"></canvas>
             <div class="mujoco-placeholder"><span>MJ</span><strong>MuJoCo 实时画面</strong><small>启动桥接器并连接后显示</small></div>
             <div class="mujoco-screen-bar"><span><i></i> LIVE SIMULATION</span><b id="mujocoStrategy">observe</b></div>
             <div id="agentSpeech" class="agent-speech" aria-live="polite"><small>MooTu 说</small><strong id="agentSpeechText"></strong></div>
@@ -145,6 +136,8 @@
       </section>
 
     </main>
+
+    <div hidden aria-hidden="true"><span id="decisionSource"></span><span id="expectedEffect"></span><span id="reflectionText"></span><span id="memoryCount"></span><span id="decisionConfidence"></span><span id="candidateSummary"></span><span id="toolTrace"></span></div>
 
     <dialog id="jsonDialog"><div class="dialog-head"><h2>结构化决策</h2><button data-close>×</button></div><pre id="jsonOutput"></pre></dialog>
     <dialog id="configDialog"><div class="dialog-head"><div><p class="eyebrow">EDITABLE SYSTEM</p><h2>动作与阈值配置</h2></div><button data-close>×</button></div><p class="dialog-note">这些内容来自你提供的 Core / Pod 交互图。修改配置文件即可扩展，无需改动判断核心。</p><div id="configContent"></div></dialog>
