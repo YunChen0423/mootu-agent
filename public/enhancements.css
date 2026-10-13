@@ -1110,11 +1110,11 @@ body[data-stage="converge"] .pod-section {
   }
 
   .workspace-grid {
-    grid-template-columns: 1.42fr 0.9fr 0.82fr;
+    grid-template-columns: minmax(270px, .72fr) minmax(320px, .9fr) minmax(500px, 1.48fr);
     height: calc(100vh - 76px);
   }
 
-  .video-stage { height: 232px; }
+  .video-stage { height: 190px; }
   .input-panel .transcript-card {
     display: flex;
     flex: 1 1 auto;
