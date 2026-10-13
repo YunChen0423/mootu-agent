@@ -279,7 +279,7 @@ function setMujocoStatus(status, detail, connected = false) {
 }
 
 async function initBrowserMujoco() {
-  setMujocoStatus("MuJoCo WASM 加载中", "正在初始化浏览器物理引擎", false);
+  setMujocoStatus("MuJoCo WASM 加载中", "首次打开可能需要几十秒 · 无需本地程序", false);
   try {
     state.mujocoRuntime = await createBrowserMujoco({ canvas: $("#mujocoViewport") });
     $("#mujocoScreen").classList.add("streaming");
