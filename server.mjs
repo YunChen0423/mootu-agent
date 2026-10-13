@@ -63,7 +63,8 @@ const server = createServer(async (req, res) => {
       return json(res, 200, {
         mode: process.env.DEEPSEEK_API_KEY ? "deepseek" : "fallback",
         model: process.env.DEEPSEEK_MODEL || "deepseek-chat",
-        capabilities: process.env.DEEPSEEK_API_KEY ? ["understand", "decide", "speak", "reflect"] : ["rule_fallback"]
+        architecture: "pi",
+        capabilities: process.env.DEEPSEEK_API_KEY ? ["tool_loop", "understand", "decide", "speak", "reflect"] : ["rule_fallback"]
       });
     }
     if (req.method === "POST" && url.pathname === "/api/analyze") {

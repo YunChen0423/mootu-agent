@@ -1,60 +1,115 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { runAIAgent } from "../ai-agent.mjs";
+import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
+import { decideLiveWithAI, runAIAgent } from "../ai-agent.mjs";
 
 const config = JSON.parse(await readFile(new URL("../public/config/actions.json", import.meta.url), "utf8"));
 const sample = JSON.parse(await readFile(new URL("../public/data/sample-session.json", import.meta.url), "utf8"));
+const READ_TOOLS = ["observe_discussion_window", "get_participation_metrics", "get_flow_metrics", "get_diversity_metrics", "read_recent_memory", "check_intervention_cooldown"];
+const ACTION_TOOLS = ["propose_intervention", "generate_robot_action", "dispatch_core_action", "dispatch_pod_feedback", "record_expected_effect"];
+const COMPLETE_TOOL_CHAIN = [...READ_TOOLS, "evaluate_candidates", ...ACTION_TOOLS];
 
-test("without a secret the agent is explicit about rule fallback", async () => {
+function toolMessage(calls, turn) {
+  const content = calls.map(({ tool, params = {} }, index) => fauxToolCall(tool, params, { id: `call-${turn}-${index}` }));
+  return fauxAssistantMessage(content, { stopReason: "toolUse" });
+}
+
+function piRuntime(turns) {
+  const faux = fauxProvider();
+  faux.setResponses(turns.map((calls, index) => toolMessage(calls, index)));
+  return { streamFn: faux.provider.streamSimple, modelDefinition: faux.getModel() };
+}
+
+function completeRuntime(evaluationParams) {
+  return piRuntime([
+    READ_TOOLS.map((tool) => ({ tool })),
+    [{ tool: "evaluate_candidates", params: evaluationParams }],
+    ACTION_TOOLS.map((tool) => ({ tool }))
+  ]);
+}
+
+test("without a secret the pi-backed agent is explicit about rule fallback", async () => {
   const result = await runAIAgent({ transcript: sample.transcript, participants: sample.participants, duration: sample.duration, config, apiKey: "" });
   assert.equal(result.mode, "fallback");
+  assert.equal(result.architecture, "pi");
   assert.ok(result.events.every((event) => event.decisionSource === "rule_fallback"));
 });
 
-test("DeepSeek decisions are constrained by measured observations and action policy", async () => {
-  const fakeFetch = async () => ({
-    ok: true,
-    json: async () => ({ choices: [{ message: { content: JSON.stringify({ summary: "AI 已制定策略", events: [
-      { time: 0, stage_recommendation: "diverge", candidates: [{ strategy: "invent_strategy", confidence: 99 }] },
-      { time: 43, stage_recommendation: "diverge", evidence: ["最近窗口未出现明显新方向"], missing_evidence: [], candidates: [
-        { strategy: "observe", title: "继续观察", rationale: "保留空间", benefit: 35, disruption: 0, goal_fit: 40, confidence: 75, follow_up: "等待", expected_effect: "保留空间" },
-        { strategy: "open_new_direction", title: "打开新方向", rationale: "想法开始重复", benefit: 90, disruption: 15, goal_fit: 90, confidence: 85, follow_up: "观察是否出现新概念", expected_effect: "提升发散性", utterance: "如果把这个方案反过来，会发生什么？" }
-      ] }
-    ] }) } }] })
-  });
-  const result = await runAIAgent({ transcript: sample.transcript, participants: sample.participants, duration: sample.duration, config, apiKey: "test", fetchImpl: fakeFetch });
+test("all perception, decision, action, dispatch, and memory capabilities are tools", async () => {
+  const runtime = completeRuntime({ summary: "AI 已制定策略", events: [
+    { time: 0, stage_recommendation: "diverge", evidence: [], missing_evidence: [], candidates: [{ strategy: "invent_strategy", benefit: 99, disruption: 0, goal_fit: 99, confidence: 99 }] },
+    { time: 43, stage_recommendation: "diverge", evidence: ["最近窗口未出现明显新方向"], missing_evidence: [], candidates: [
+      { strategy: "observe", title: "继续观察", rationale: "保留空间", benefit: 35, disruption: 0, goal_fit: 40, confidence: 75, follow_up: "等待", expected_effect: "保留空间" },
+      { strategy: "open_new_direction", title: "打开新方向", rationale: "想法开始重复", benefit: 90, disruption: 15, goal_fit: 90, confidence: 85, follow_up: "观察是否出现新概念", expected_effect: "提升发散性", utterance: "如果把这个方案反过来，会发生什么？" }
+    ] }
+  ] });
+  const result = await runAIAgent({ transcript: sample.transcript, participants: sample.participants, duration: sample.duration, config, ...runtime });
   assert.equal(result.mode, "deepseek");
+  assert.equal(result.architecture, "pi");
   assert.equal(result.events[0].strategy, "observe");
   assert.equal(result.events[1].strategy, "open_new_direction");
-  assert.equal(result.events[1].decisionSource, "deepseek+harness");
+  assert.equal(result.events[1].decisionSource, "deepseek+pi-harness");
   assert.equal(result.events[1].expectedEffect, "提升发散性");
   assert.equal(result.events[1].confidence, 85);
   assert.ok(result.events[1].selectionMargin >= 8);
-  assert.equal(result.events[1].candidates.length, 2);
-  assert.ok(result.events[1].metrics.participation >= 0 && result.events[1].metrics.participation <= 100);
+  assert.deepEqual(result.trace.filter((event) => event.type === "tool_execution_start").map((event) => event.tool), COMPLETE_TOOL_CHAIN);
+  assert.equal(result.execution.recorded, true);
+  assert.ok(result.execution.coreDispatch.every((item) => item.status === "simulated"));
+  assert.ok(result.execution.podDispatch.every((item) => item.status === "simulated"));
 });
 
-test("Harness declines an intervention when its utility does not clearly beat observing", async () => {
-  const fakeFetch = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ events: [{
-    time: 43, stage_recommendation: "diverge", missing_evidence: ["尚未确认停顿是否自然"], candidates: [
+test("Harness declines an intervention when submitted utility is too low", async () => {
+  const runtime = completeRuntime({ summary: "继续观察", events: [{
+    time: 43, stage_recommendation: "diverge", evidence: [], missing_evidence: ["尚未确认停顿是否自然"], candidates: [
       { strategy: "observe", benefit: 55, disruption: 0, goal_fit: 70, confidence: 80, rationale: "继续观察" },
       { strategy: "open_new_direction", benefit: 65, disruption: 30, goal_fit: 70, confidence: 65, rationale: "尝试启发" }
     ]
-  }] }) } }] }) });
-  const result = await runAIAgent({ transcript: sample.transcript, participants: sample.participants, duration: sample.duration, config, apiKey: "test", fetchImpl: fakeFetch });
+  }] });
+  const result = await runAIAgent({ transcript: sample.transcript, participants: sample.participants, duration: sample.duration, config, ...runtime });
   assert.equal(result.events[1].strategy, "observe");
   assert.match(result.events[1].reason, /收益未明显高于打断成本/);
   assert.deepEqual(result.events[1].missingEvidence, ["尚未确认停顿是否自然"]);
 });
 
-test("Stage changes require two consecutive convergence recommendations", async () => {
-  const content = JSON.stringify({ events: [
-    { time: 0, stage_recommendation: "diverge", candidates: [{ strategy: "observe", benefit: 50, disruption: 0, goal_fit: 60, confidence: 80 }] },
-    { time: 43, stage_recommendation: "converge", candidates: [{ strategy: "observe", benefit: 50, disruption: 0, goal_fit: 60, confidence: 80 }] },
-    { time: 86, stage_recommendation: "converge", candidates: [{ strategy: "observe", benefit: 50, disruption: 0, goal_fit: 60, confidence: 80 }] }
+test("candidate evaluation rejects runs that skipped perception tools", async () => {
+  const params = { summary: "观察后决策", events: [{ time: 0, stage_recommendation: "diverge", evidence: [], missing_evidence: [], candidates: [{ strategy: "observe", benefit: 50, disruption: 0, goal_fit: 60, confidence: 80 }] }] };
+  const runtime = piRuntime([
+    [{ tool: "evaluate_candidates", params }],
+    READ_TOOLS.map((tool) => ({ tool })),
+    [{ tool: "evaluate_candidates", params }],
+    ACTION_TOOLS.map((tool) => ({ tool }))
+  ]);
+  const result = await runAIAgent({ transcript: sample.transcript, participants: sample.participants, duration: sample.duration, config, ...runtime });
+  const toolEnds = result.trace.filter((event) => event.type === "tool_execution_end");
+  assert.equal(toolEnds[0].isError, true);
+  assert.equal(toolEnds.at(-1).isError, false);
+});
+
+test("stage changes still require two consecutive convergence recommendations", async () => {
+  const observe = { strategy: "observe", benefit: 50, disruption: 0, goal_fit: 60, confidence: 80 };
+  const runtime = completeRuntime({ summary: "阶段判断", events: [
+    { time: 0, stage_recommendation: "diverge", evidence: [], missing_evidence: [], candidates: [observe] },
+    { time: 43, stage_recommendation: "converge", evidence: [], missing_evidence: [], candidates: [observe] },
+    { time: 86, stage_recommendation: "converge", evidence: [], missing_evidence: [], candidates: [observe] }
   ] });
-  const result = await runAIAgent({ transcript: sample.transcript, participants: sample.participants, duration: sample.duration, config, apiKey: "test", fetchImpl: async () => ({ ok: true, json: async () => ({ choices: [{ message: { content } }] }) }) });
+  const result = await runAIAgent({ transcript: sample.transcript, participants: sample.participants, duration: sample.duration, config, ...runtime });
   assert.equal(result.events[1].stage, "diverge");
   assert.equal(result.events[2].stage, "converge");
+});
+
+test("live decisions run the same complete tool chain", async () => {
+  const runtime = completeRuntime({
+    stage_recommendation: "diverge",
+    evidence: ["近期想法开始重复"],
+    missing_evidence: [],
+    candidates: [
+      { strategy: "observe", benefit: 30, disruption: 0, goal_fit: 35, confidence: 75 },
+      { strategy: "open_new_direction", benefit: 90, disruption: 10, goal_fit: 90, confidence: 85, utterance: "换一个使用场景看看？" }
+    ]
+  });
+  const result = await decideLiveWithAI({ transcript: sample.transcript.slice(-4), participants: sample.participants, stage: "diverge", signal: {}, memory: [], config, ...runtime });
+  assert.equal(result.decision.strategy, "open_new_direction");
+  assert.deepEqual(result.trace.filter((event) => event.type === "tool_execution_start").map((event) => event.tool), COMPLETE_TOOL_CHAIN);
+  assert.equal(result.execution.recorded, true);
 });

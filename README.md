@@ -48,7 +48,7 @@ Core 群体动作 + Pod 个体反馈 + 可审计 JSON
 
 ### 2. AI 决策策略
 
-配置 DeepSeek 后，`ai-agent.mjs` 会把测量信号、最近逐字稿、可用动作和短期记忆交给模型。模型不会直接拍板，而是同时提出“继续观察”和 1–2 个介入候选，并估计每个候选的收益、打断成本、目标匹配度和置信度。Harness 比较候选后才选择最终动作，并为下一观察窗口写下预期效果。下一次决策会复盘上一轮介入后的参与、发散与流动变化。
+配置 DeepSeek 后，`ai-agent.mjs` 会启动一个基于 pi core 的有状态 Agent loop，把测量信号、最近逐字稿、可用动作和短期记忆交给模型。模型不能直接修改决策结果，只能调用注册的提交工具，提出“继续观察”和 1–2 个介入候选，并估计每个候选的收益、打断成本、目标匹配度和置信度。工具执行器中的确定性 Harness 比较候选后才选择最终动作，并为下一观察窗口写下预期效果。下一次决策会复盘上一轮介入后的参与、发散与流动变化。
 
 模型只能从下面的受限动作空间选择；服务端会校验策略、目标成员、冷却时间和文本长度。无效输出会降级为 `observe`：
 
@@ -72,7 +72,7 @@ Core 群体动作 + Pod 个体反馈 + 可审计 JSON
 
 ### 4. DeepSeek 与安全回退
 
-配置 DeepSeek 后，它不只是生成文案，而是 Agent 的策略决策层：
+配置 DeepSeek 后，它不只是生成文案，而是 pi Agent loop 中的策略提案层：
 
 - 理解最近讨论及测量信号；
 - 生成多个阶段与动作候选，并标明置信度和证据缺口；
@@ -81,13 +81,36 @@ Core 群体动作 + Pod 个体反馈 + 可审计 JSON
 
 确定性代码仍负责信号测量、权限、动作白名单、介入冷却和输出校验。没有 API Key 或请求失败时，系统明确显示“AI 未配置 · 安全回退”，并使用规则策略维持演示；此时不声称正在进行大模型推理。
 
-### 5. Agent Harness
+### 5. pi Agent 架构
 
-这里的 harness 是围绕模型的一组工程约束与运行设施，而不是提示词本身：
+服务端使用 `@earendil-works/pi-agent-core` 的 `Agent` 作为运行时：
+
+- **状态归 Agent 所有**：消息、模型、工具和运行状态由 Agent 实例持有，而不是散落在一次性请求函数中。
+- **工具闭环**：感知、指标、记忆、冷却检查、候选评估、介入提案、动作生成、Core / Pod dispatch 和效果记录均为独立工具。观察数据只通过 tool result 进入上下文，普通文本回答不会被当作有效决策。
+- **生命周期事件**：运行过程记录 `agent_start`、消息、工具执行、轮次结束等事件，API 结果中的 `trace` 可用于调试和研究审计。
+- **确定性执行边界**：模型负责提出候选，策略白名单、目标成员、冷却、阶段防抖和最终仲裁仍由本地 policy 层执行。
+- **故障回退**：没有密钥时不启动模型循环，直接使用确定性规则引擎，保持原有体验可用。
+
+注册的领域工具：
+
+| 阶段 | 工具 |
+| --- | --- |
+| 感知 | `observe_discussion_window` |
+| 指标 | `get_participation_metrics`、`get_flow_metrics`、`get_diversity_metrics` |
+| 状态 | `read_recent_memory`、`check_intervention_cooldown` |
+| 决策 | `evaluate_candidates`、`propose_intervention` |
+| 行动 | `generate_robot_action`、`dispatch_core_action`、`dispatch_pod_feedback` |
+| 反馈 | `record_expected_effect` |
+
+当前项目没有真实机器人硬件驱动，因此两个 dispatch 工具会生成状态为 `simulated` 的可审计命令；未来接入硬件时只需替换对应 executor。
+
+### 6. Agent Harness
+
+这里的 harness 是围绕 pi 运行时的一组工程约束与运行设施，而不是提示词本身：
 
 - **上下文组装**：把观察窗口、最近逐字稿、参与者、阶段和短期记忆整理为模型输入。
-- **动作空间**：模型只能从 6 个允许策略中选择，不能自由发明硬件动作。
-- **结构化协议**：要求返回固定 JSON，包括阶段建议、证据缺口、多个候选、四项候选评分、发言与后续观察。
+- **动作空间**：模型只能从 6 个允许策略中选择，并通过注册的领域工具完成完整流程，不能自由发明硬件动作。
+- **结构化协议**：pi 工具使用 TypeBox schema 校验阶段建议、证据缺口、多个候选、四项候选评分、发言与后续观察。
 - **候选仲裁**：Harness 按 `40% 收益 + 30% 目标匹配 + 20% 置信度 - 35% 打断成本` 计算效用；介入候选至少领先观察 8 分且置信度达到 60 才会执行。
 - **校验与护栏**：校验策略、成员目标、文本长度与介入冷却；证据不足、目标无效或非法输出都会降级为观察。
 - **阶段防抖**：连续两个观察窗口都建议收敛后才切换阶段，避免界面与行为随单次模型波动来回跳变。
@@ -101,7 +124,7 @@ Core 群体动作 + Pod 个体反馈 + 可审计 JSON
 
 ### 环境要求
 
-- Node.js 18 或更高版本
+- Node.js 22.19 或更高版本
 - 支持现代 ES Modules 的浏览器
 
 ### 本地运行
@@ -111,6 +134,29 @@ npm run dev
 ```
 
 打开 [http://localhost:4173](http://localhost:4173)。没有配置 DeepSeek 时，页面会自动使用本地策略模式和内置示例数据。
+
+### 连接 MuJoCo
+
+网页右侧“具身输出”可以直接驱动同级 `mootu` 目录中的 MuJoCo 模型。先在另一个终端启动本地桥接器：
+
+```bash
+npm run mujoco:bridge
+```
+
+桥接器会用 `mootu/.venv` 中的 `mjpython` 打开 `mootu/interaction_demo.xml`，并只监听本机回环地址 `ws://127.0.0.1:8765`。随后在网页的“具身输出”顶部点击“连接 MuJoCo”。回放事件、现场规则判断和 AI 决策切换时，网页会发送版本化的 `mootu.command` 指令。
+
+当前映射包括：
+
+- `observe`：停止底盘并轻微环视；
+- `invite_quiet_member`：转向对应成员 Pod，短距离靠近并前倾；
+- `open_new_direction` / `prepare_convergence`：抬头并进行不同幅度的环视；
+- `sustain_flow` / `advance_decision`：前倾、点头，维持或推进讨论。
+
+成员 `A`–`F` 分别映射到 `interaction_demo.xml` 中的 `pod_1_light`–`pod_6_light`。可以先运行无界面校验：
+
+```bash
+npm run mujoco:validate
+```
 
 ### 启用 DeepSeek
 
@@ -172,6 +218,10 @@ npm run dev
 
 ```text
 mootu-agent/
+├── agent/
+│   ├── pi-runtime.mjs          # pi Agent loop、工具与生命周期 trace
+│   ├── tools.mjs               # 感知、决策、动作、dispatch 与记忆工具
+│   └── policy.mjs              # 候选校验、效用仲裁与阶段防抖
 ├── public/
 │   ├── index.html              # 页面结构
 │   ├── app.js                  # 回放、现场模式与界面状态
@@ -185,7 +235,7 @@ mootu-agent/
 │   ├── agent-engine.test.mjs
 │   ├── ai-agent.test.mjs
 │   └── ui-contract.test.mjs
-├── ai-agent.mjs               # DeepSeek 策略、记忆、校验与回退
+├── ai-agent.mjs               # pi runtime 与规则回退的 API 适配层
 ├── server.mjs                 # 静态服务与 Agent API
 ├── build-worker.mjs           # 生成可运行 Agent API 的 Sites Worker
 ├── build.mjs                  # 可选的纯静态构建
@@ -206,7 +256,9 @@ npm run build:static # 仅生成纯静态版本
 
 - 调整动作、文案和阈值：`public/config/actions.json`
 - 修改确定性测量与回退策略：`public/agent-engine.js`
-- 修改 AI 策略提示、记忆与安全校验：`ai-agent.mjs`
+- 修改 pi 工具循环与提示：`agent/pi-runtime.mjs`
+- 修改候选效用、阶段防抖和安全校验：`agent/policy.mjs`
+- 修改 AI/回退 API 适配：`ai-agent.mjs`
 - 修改现场音视频判断：`public/live-sensing.js`
 - 修改界面状态和逐字稿处理：`public/app.js`
 - 替换示例讨论：`public/data/sample-session.json`

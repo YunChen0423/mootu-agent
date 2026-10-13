@@ -93,6 +93,7 @@
             <div><span>工作记忆</span><strong id="memoryCount">0 条</strong></div>
             <div><span>决策置信度</span><strong id="decisionConfidence">—</strong></div>
             <div><span>候选比较</span><strong id="candidateSummary">等待分析</strong></div>
+            <div class="tool-state"><span>工具调用</span><strong id="toolTrace">规则引擎 · 无工具调用</strong></div>
           </div>
           <div id="decisionCycle" class="cycle" aria-label="Agent 决策循环">
             <span class="active">观察</span><i>→</i><span>判断</span><i>→</i><span>介入</span><i>→</i><span>反馈</span>
@@ -113,6 +114,13 @@
 
         <article class="panel output-panel">
           <div class="panel-head"><div><span class="step">03</span><h2>具身输出</h2></div><button id="jsonBtn" class="text-button">查看 JSON</button></div>
+          <div class="mujoco-link" aria-live="polite">
+            <div>
+              <span id="mujocoDot" class="mujoco-dot"></span>
+              <div><strong id="mujocoStatus">MuJoCo 未连接</strong><small id="mujocoDetail">启动本地桥接器后点击连接</small></div>
+            </div>
+            <button id="mujocoBtn" class="mujoco-button" type="button">连接 MuJoCo</button>
+          </div>
           <div class="robot-visual">
             <div id="memberRing" class="member-ring" aria-label="讨论成员位置"></div>
             <div id="focusArrow" class="focus-arrow"><i></i><span id="focusLabel">朝向 C</span></div>

@@ -1,4 +1,5 @@
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { build } from "esbuild";
 
 const assetNames = ["index.html", "styles.css", "enhancements.css", "app.js", "agent-engine.js", "live-sensing.js", "config/actions.json", "data/sample-session.json"];
 const assets = {};
@@ -6,13 +7,13 @@ for (const name of assetNames) assets[`/${name}`] = await readFile(`public/${nam
 const config = JSON.parse(assets["/config/actions.json"]);
 
 const worker = `import { decideLiveWithAI, runAIAgent } from "./ai-agent.mjs";
-import { generateContextualUtterance } from "./agent-engine.js";
+import { generateContextualUtterance } from "./public/agent-engine.js";
 
 const ASSETS = ${JSON.stringify(assets)};
 const CONFIG = ${JSON.stringify(config)};
 const TYPES = { html: "text/html; charset=utf-8", css: "text/css; charset=utf-8", js: "text/javascript; charset=utf-8", json: "application/json; charset=utf-8" };
 const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": TYPES.json } });
-const modelOptions = (env) => ({ apiKey: env.DEEPSEEK_API_KEY || "", baseUrl: env.DEEPSEEK_BASE_URL || "https://api.deepseek.com", model: env.DEEPSEEK_MODEL || "deepseek-chat", fetchImpl: fetch });
+const modelOptions = (env) => ({ apiKey: env.DEEPSEEK_API_KEY || "", baseUrl: env.DEEPSEEK_BASE_URL || "https://api.deepseek.com", model: env.DEEPSEEK_MODEL || "deepseek-chat" });
 
 async function generateMessage(payload, env) {
   const local = generateContextualUtterance(payload);
@@ -27,7 +28,7 @@ async function generateMessage(payload, env) {
 export default { async fetch(request, env) {
   try {
     const url = new URL(request.url);
-    if (request.method === "GET" && url.pathname === "/api/status") return reply({ mode: env.DEEPSEEK_API_KEY ? "deepseek" : "fallback", model: env.DEEPSEEK_MODEL || "deepseek-chat", capabilities: env.DEEPSEEK_API_KEY ? ["understand", "decide", "speak", "reflect"] : ["rule_fallback"] });
+    if (request.method === "GET" && url.pathname === "/api/status") return reply({ mode: env.DEEPSEEK_API_KEY ? "deepseek" : "fallback", model: env.DEEPSEEK_MODEL || "deepseek-chat", architecture: "pi", capabilities: env.DEEPSEEK_API_KEY ? ["tool_loop", "understand", "decide", "speak", "reflect"] : ["rule_fallback"] });
     if (request.method === "POST" && url.pathname === "/api/analyze") {
       const payload = await request.json();
       if (!Array.isArray(payload.transcript) || !payload.transcript.length) return reply({ error: "transcript 必须是非空数组" }, 400);
@@ -48,8 +49,13 @@ export default { async fetch(request, env) {
 await rm("dist", { recursive: true, force: true });
 await mkdir("dist/server", { recursive: true });
 await mkdir("dist/.openai", { recursive: true });
-await writeFile("dist/server/index.js", worker);
-await writeFile("dist/server/ai-agent.mjs", (await readFile("ai-agent.mjs", "utf8")).replace("./public/agent-engine.js", "./agent-engine.js"));
-await cp("public/agent-engine.js", "dist/server/agent-engine.js");
-await cp(".openai/hosting.json", "dist/.openai/hosting.json");
-console.log("Sites Worker copied to dist/");
+await build({
+  stdin: { contents: worker, resolveDir: process.cwd(), sourcefile: "worker-entry.js", loader: "js" },
+  bundle: true,
+  format: "esm",
+  platform: "browser",
+  target: "es2022",
+  outfile: "dist/server/index.js"
+});
+await writeFile("dist/.openai/hosting.json", await readFile(".openai/hosting.json", "utf8"));
+console.log("pi-based Sites Worker bundled to dist/");

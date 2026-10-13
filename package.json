@@ -3,12 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "scripts": {
     "dev": "node --env-file-if-exists=.env server.mjs",
     "start": "node --env-file-if-exists=.env server.mjs",
     "build": "node build-worker.mjs",
     "build:static": "node build.mjs",
-    "check": "node --check server.mjs && node --check ai-agent.mjs && node --check build-worker.mjs && node --check public/app.js && node --check public/agent-engine.js && node --check public/live-sensing.js && node --check build.mjs",
+    "mujoco:bridge": "node bridge/launch.mjs",
+    "mujoco:validate": "node bridge/launch.mjs --validate",
+    "check": "node --check server.mjs && node --check ai-agent.mjs && node --check agent/policy.mjs && node --check agent/tools.mjs && node --check agent/pi-runtime.mjs && node --check build-worker.mjs && node --check public/app.js && node --check public/agent-engine.js && node --check public/live-sensing.js && node --check build.mjs",
     "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "^1.1.0",
+    "@earendil-works/pi-ai": "^1.1.0",
+    "typebox": "^1.3.27"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }

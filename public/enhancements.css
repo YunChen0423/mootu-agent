@@ -375,6 +375,9 @@
   white-space: nowrap;
 }
 
+.agent-state .tool-state { grid-column: 1 / -1; }
+.agent-state .tool-state strong { color: #725400; }
+
 .status-pill.fallback i { background: #d59a12; }
 
 .decision-card.decision-flash {
@@ -1017,6 +1020,25 @@ body[data-stage="converge"] .metric-row.metric-warning {
   background: linear-gradient(135deg, #fff9e5, #fff2bd);
   box-shadow: 0 8px 24px rgba(159, 113, 0, 0.12);
 }
+
+.mujoco-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 10px 11px;
+  border: 1px solid rgba(40, 40, 35, 0.12);
+  border-radius: 13px;
+  background: rgba(250, 249, 246, 0.86);
+}
+.mujoco-link > div { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.mujoco-link strong, .mujoco-link small { display: block; }
+.mujoco-link strong { font-size: 12px; }
+.mujoco-link small { margin-top: 2px; color: var(--muted); font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mujoco-dot { width: 9px; height: 9px; flex: 0 0 auto; border-radius: 50%; background: #bbb; box-shadow: 0 0 0 4px rgba(120,120,120,.09); }
+.mujoco-dot.connected { background: #24a47c; box-shadow: 0 0 0 4px rgba(36,164,124,.13); }
+.mujoco-button { border: 0; border-radius: 9px; padding: 7px 10px; background: #292a2d; color: white; font-size: 10px; font-weight: 800; cursor: pointer; white-space: nowrap; }
 
 .pod-section::after {
   content: "触觉反馈";

@@ -3,7 +3,7 @@ import { createLiveSensing } from "./live-sensing.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const state = { session: null, config: null, events: [], time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0 };
+const state = { session: null, config: null, events: [], agentTrace: [], agentExecution: null, time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoSocket: null, mujocoCommandKey: null, mujocoSequence: 0, mujocoManualClose: false };
 
 const formatTime = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
@@ -270,6 +270,68 @@ function applyActionOutput(action, utterance) {
   $("#coreActions").innerHTML = Object.entries(action).filter(([key]) => key !== "label").map(([key, value]) => `<div class="action" data-channel="${key}"><span>${channelLabel(key)}</span><strong>${escapeHtml(key === "display" ? utterance : value || "—")}</strong></div>`).join("");
 }
 
+function setMujocoStatus(status, detail, connected = false) {
+  $("#mujocoStatus").textContent = status;
+  $("#mujocoDetail").textContent = detail;
+  $("#mujocoDot").classList.toggle("connected", connected);
+  $("#mujocoBtn").textContent = connected ? "断开" : "连接 MuJoCo";
+}
+
+function connectMujoco() {
+  if (state.mujocoSocket?.readyState === WebSocket.OPEN) {
+    state.mujocoManualClose = true;
+    state.mujocoSocket.close(1000, "user disconnect");
+    return;
+  }
+  state.mujocoManualClose = false;
+  setMujocoStatus("正在连接 MuJoCo", "本地桥接器 ws://127.0.0.1:8765", false);
+  let socket;
+  try {
+    socket = new WebSocket("ws://127.0.0.1:8765");
+  } catch (error) {
+    setMujocoStatus("MuJoCo 连接失败", error.message, false);
+    return;
+  }
+  state.mujocoSocket = socket;
+  socket.addEventListener("open", () => {
+    state.mujocoCommandKey = null;
+    setMujocoStatus("MuJoCo 已连接", "右侧动作正在实时发送到本机仿真", true);
+    dispatchMujocoCommand(state.activeEventIndex == null ? null : state.events[state.activeEventIndex], true);
+  });
+  socket.addEventListener("message", (message) => {
+    try {
+      const payload = JSON.parse(message.data);
+      if (payload.type === "mootu.status") setMujocoStatus("MuJoCo 已连接", payload.message || "指令已执行", true);
+      if (payload.type === "mootu.error") setMujocoStatus("MuJoCo 指令被拒绝", payload.message || "协议错误", true);
+    } catch {}
+  });
+  socket.addEventListener("error", () => setMujocoStatus("MuJoCo 连接失败", "请先运行 npm run mujoco:bridge", false));
+  socket.addEventListener("close", () => {
+    state.mujocoSocket = null;
+    state.mujocoCommandKey = null;
+    setMujocoStatus("MuJoCo 未连接", state.mujocoManualClose ? "已断开本地仿真" : "请确认桥接器正在运行", false);
+  });
+}
+
+function dispatchMujocoCommand(event, force = false, utterance = "") {
+  const socket = state.mujocoSocket;
+  if (!event || socket?.readyState !== WebSocket.OPEN) return;
+  const key = `${event.time ?? "live"}:${event.strategy}:${event.target || "group"}:${utterance}`;
+  if (!force && key === state.mujocoCommandKey) return;
+  state.mujocoCommandKey = key;
+  const action = state.config.core.strategies[event.strategy] || state.config.core.strategies.observe;
+  socket.send(JSON.stringify({
+    type: "mootu.command",
+    version: 1,
+    sequence: ++state.mujocoSequence,
+    issued_at: new Date().toISOString(),
+    strategy: event.strategy,
+    target: event.target || null,
+    stage: event.stage || document.body.dataset.stage || "diverge",
+    core: { ...action, ...(event.target ? { orient: `朝向 ${event.target}` } : {}), display: utterance || event.utterance || action.display || "" }
+  }));
+}
+
 function contextualUtterance({ key, strategy, target, stage, transcript, action }) {
   state.activeUtteranceKey = key;
   if (!state.utteranceCache.has(key)) {
@@ -293,6 +355,27 @@ function contextualUtterance({ key, strategy, target, stage, transcript, action 
   return state.utteranceCache.get(key);
 }
 
+function renderToolTrace(trace = state.agentTrace) {
+  const calls = trace.filter((event) => event.type === "tool_execution_start").map((event) => event.tool);
+  const labels = {
+    observe_discussion_window: "读取讨论窗口",
+    get_participation_metrics: "查询参与度",
+    get_flow_metrics: "查询流动性",
+    get_diversity_metrics: "查询发散度",
+    read_recent_memory: "读取短期记忆",
+    check_intervention_cooldown: "检查冷却",
+    evaluate_candidates: "评估候选",
+    propose_intervention: "提出介入",
+    generate_robot_action: "生成动作",
+    dispatch_core_action: "控制 Core",
+    dispatch_pod_feedback: "控制 Pod",
+    record_expected_effect: "记录效果"
+  };
+  const value = calls.length ? calls.map((name) => labels[name] || name).join(" → ") : "规则引擎 · 无工具调用";
+  $("#toolTrace").textContent = value;
+  $("#toolTrace").title = calls.join(" → ");
+}
+
 function renderDecision(event, eventIndex, time) {
   const action = state.config.core.strategies[event.strategy];
   const intervening = event.strategy !== "observe";
@@ -301,7 +384,7 @@ function renderDecision(event, eventIndex, time) {
   $("#decisionTitle").textContent = event.title;
   $("#decisionReason").textContent = event.reason;
   $("#followUp").textContent = event.followUp;
-  $("#decisionSource").textContent = event.decisionSource?.startsWith("deepseek") ? "DeepSeek 提案 · Harness 决策" : "规则安全回退";
+  $("#decisionSource").textContent = event.decisionSource?.startsWith("deepseek") ? "DeepSeek 提案 · pi Harness 决策" : "规则安全回退";
   $("#expectedEffect").textContent = event.expectedEffect || event.followUp;
   $("#reflectionText").textContent = event.reflection || "等待下一观察窗口验证";
   $("#memoryCount").textContent = `${Math.max(0, eventIndex)} 条`;
@@ -311,6 +394,7 @@ function renderDecision(event, eventIndex, time) {
   $("#candidateSummary").textContent = event.candidates?.length
     ? event.candidates.map((candidate) => `${state.config.core.strategies[candidate.strategy]?.label || candidate.strategy} ${candidate.utility ?? "—"}`).join(" / ")
     : "单路径规则";
+  renderToolTrace();
   $("#evidenceList").innerHTML = event.evidence.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
   const hasDiscussionEvidence = event.time > 0;
   setMetric("participation", event.metrics.participation, ["不开放", "偏不开放", "偏开放", "开放"], event.stage, hasDiscussionEvidence);
@@ -328,11 +412,12 @@ function renderDecision(event, eventIndex, time) {
   const renderedAction = event.target ? { ...action, orient: `朝向 ${event.target}` } : action;
   const utterance = event.utterance || contextualUtterance({ key: utteranceKey, strategy: event.strategy, target: event.target, stage: event.stage, transcript: contextLines, action: renderedAction });
   applyActionOutput(renderedAction, utterance);
+  dispatchMujocoCommand(event, false, utterance);
   const pod = event.target ? state.config.pod.responses.low_participation : state.config.pod.responses.normal;
   $("#podTarget").textContent = event.target ? `Pod ${event.target} · 个体鼓励` : "群体陪伴";
   $("#podActions").textContent = `${pod.temperature} · ${pod.vibration} · ${pod.breathing}`;
   $("#podOrb").classList.toggle("active", Boolean(event.target));
-  $("#jsonOutput").textContent = JSON.stringify({ timestamp: formatPresentationTime(event.time), source_timestamp: formatTime(event.time), playback_speed: timelineSpeed(), stage: event.stage, stage_control: { recommendation: event.stageRecommendation, consecutive_votes: event.stageVotes }, observation: { evidence: event.evidence, missing_evidence: gaps }, assessment: event.metrics, decision: { source: event.decisionSource, intervene: intervening, strategy: event.strategy, target: event.target, reason: event.reason, confidence: event.confidence, expected_effect: event.expectedEffect, selection_margin: event.selectionMargin, candidate_evaluation: event.candidates }, memory: { previous_outcome: event.reflection, entries: eventIndex }, actions: { core: { ...renderedAction, display: utterance }, pod: event.target ? { target: event.target, ...pod } : pod }, follow_up: event.followUp }, null, 2);
+  $("#jsonOutput").textContent = JSON.stringify({ timestamp: formatPresentationTime(event.time), source_timestamp: formatTime(event.time), playback_speed: timelineSpeed(), runtime: { architecture: "pi", tool_trace: state.agentTrace, execution: state.agentExecution }, stage: event.stage, stage_control: { recommendation: event.stageRecommendation, consecutive_votes: event.stageVotes }, observation: { evidence: event.evidence, missing_evidence: gaps }, assessment: event.metrics, decision: { source: event.decisionSource, intervene: intervening, strategy: event.strategy, target: event.target, reason: event.reason, confidence: event.confidence, expected_effect: event.expectedEffect, selection_margin: event.selectionMargin, candidate_evaluation: event.candidates }, memory: { previous_outcome: event.reflection, entries: eventIndex }, actions: { core: { ...renderedAction, display: utterance }, pod: event.target ? { target: event.target, ...pod } : pod }, follow_up: event.followUp }, null, 2);
 }
 
 function metricTarget(name, stage) {
@@ -415,6 +500,7 @@ function renderLiveAction(strategy) {
   const key = `live:${strategy}:${state.liveLines.length}:${transcript.at(-1)?.text || "empty"}`;
   const utterance = contextualUtterance({ key, strategy, target: null, stage: document.body.dataset.stage || "diverge", transcript, action });
   applyActionOutput(action, utterance);
+  dispatchMujocoCommand({ time: `live-${state.liveLines.length}`, strategy, target: null, stage: document.body.dataset.stage || "diverge" }, false, utterance);
 }
 
 function renderLiveJudgment(signal) {
@@ -454,13 +540,16 @@ async function requestLiveAIDecision(signal, fallbackDecision) {
     const result = await fetch("/api/agent/decide", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ transcript: state.liveLines, participants: state.session.participants, stage: document.body.dataset.stage || "diverge", signal, memory: state.agentMemory }) }).then(async (response) => { if (!response.ok) throw new Error((await response.json()).error); return response.json(); });
     if (requestId !== state.liveRequestId || !result.decision) return;
     const decision = result.decision;
+    state.agentTrace = result.trace || [];
+    state.agentExecution = result.execution || null;
+    renderToolTrace();
     state.agentMemory.push({ at: Date.now(), strategy: decision.strategy, expectedEffect: decision.expectedEffect, stageVotes: decision.stageVotes });
     state.agentMemory = state.agentMemory.slice(-8);
     document.body.dataset.stage = decision.stage;
     $("#decisionTitle").textContent = decision.title;
     $("#decisionReason").textContent = decision.reason;
     $("#followUp").textContent = decision.followUp;
-    $("#decisionSource").textContent = "DeepSeek 提案 · Harness 决策";
+    $("#decisionSource").textContent = "DeepSeek 提案 · pi Harness 决策";
     $("#expectedEffect").textContent = decision.expectedEffect;
     $("#reflectionText").textContent = state.agentMemory.length > 1 ? "已保留上一轮动作，等待新信号验证" : "首次 AI 决策";
     $("#memoryCount").textContent = `${state.agentMemory.length} 条`;
@@ -630,10 +719,13 @@ async function runFullAgentAnalysis({ automatic = false } = {}) {
   $("#decisionSource").textContent = "DeepSeek 正在分析";
   $("#decisionConfidence").textContent = "计算中…";
   $("#candidateSummary").textContent = "生成并比较候选策略…";
+  $("#toolTrace").textContent = "等待 pi Agent 调用工具…";
   try {
     const result = await fetch("/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration }) }).then(async (r) => { if (!r.ok) throw new Error((await r.json()).error); return r.json(); });
     if (requestId !== state.analysisRequestId) return;
     state.events = result.events;
+    state.agentTrace = result.trace || [];
+    state.agentExecution = result.execution || null;
     renderStatic();
     setTime(0);
     state.model = result.mode;
@@ -645,6 +737,8 @@ async function runFullAgentAnalysis({ automatic = false } = {}) {
     if (state.model !== "deepseek") {
       const local = runAgent({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration, config: state.config });
       state.events = local.events;
+      state.agentTrace = [];
+      state.agentExecution = null;
       renderStatic();
       setTime(0);
       toast(`本地策略引擎分析完成：${local.summary}`);
@@ -662,6 +756,7 @@ async function runFullAgentAnalysis({ automatic = false } = {}) {
 }
 
 $("#analyzeBtn").addEventListener("click", () => runFullAgentAnalysis({ automatic: false }));
+$("#mujocoBtn").addEventListener("click", connectMujoco);
 $("#jsonBtn").addEventListener("click", () => $("#jsonDialog").showModal());
 $("#configBtn").addEventListener("click", () => $("#configDialog").showModal());
 $$("[data-close]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));

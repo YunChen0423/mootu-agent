@@ -25,6 +25,12 @@ test("decision card appears before the reasoning cycle", () => {
   assert.ok(html.indexOf("decision-card") < html.indexOf("Agent 决策循环"));
 });
 
+test("pi tool calls are visible in the agent state", () => {
+  assert.match(html, /id="toolTrace"/);
+  assert.match(app, /observe_discussion_window/);
+  assert.match(app, /dispatch_core_action/);
+});
+
 test("five-times playback is not shown as interface copy", () => {
   assert.doesNotMatch(html, /5×/);
 });
@@ -113,4 +119,12 @@ test("AI analysis starts automatically and the button is only a retry", () => {
   assert.match(app, /runFullAgentAnalysis\(\{ automatic: true \}\)/);
   assert.match(app, /loadImportedTranscript[\s\S]*runFullAgentAnalysis\(\{ automatic: true \}\)/);
   assert.doesNotMatch(html, />运行 AI Agent<\/button>/);
+});
+
+test("embodied output exposes the local MuJoCo bridge contract", () => {
+  assert.match(html, /id="mujocoBtn"/);
+  assert.match(app, /ws:\/\/127\.0\.0\.1:8765/);
+  assert.match(app, /type: "mootu\.command"/);
+  assert.match(app, /version: 1/);
+  assert.match(app, /dispatchMujocoCommand\(event/);
 });
