@@ -180,7 +180,6 @@ function renderProtocolDecision(blackboard, fallbackEvent, eventIndex) {
   $("#decisionTitle").textContent = copy.title;
   $("#decisionReason").textContent = copy.reason;
   $("#followUp").textContent = copy.next;
-  $("#evidenceList").innerHTML = `<li>${escapeHtml(copy.evidence)}</li>${blackboard.currentEvent ? `<li>${escapeHtml(blackboard.currentEvent.speaker)}：${escapeHtml(blackboard.currentEvent.text)}</li>` : ""}`;
   clearMetric("participation", ["不开放", "偏不开放", "偏开放", "开放"]);
   clearMetric("diversity", ["收束", "偏收束", "偏发散", "发散"]);
   clearMetric("flow", ["停滞", "偏停滞", "偏流动", "流动"]);
@@ -265,7 +264,6 @@ function enterLiveSession() {
   clearMetric("participation", ["不开放", "偏不开放", "偏开放", "开放"]);
   clearMetric("diversity", ["收束", "偏收束", "偏发散", "发散"]);
   clearMetric("flow", ["停滞", "偏停滞", "偏流动", "流动"]);
-  $("#evidenceList").innerHTML = "<li>现场会话刚刚开始，尚未形成有效判断。</li>";
   renderDecisionCycle(false, -1);
   renderLiveAction("observe");
 }
@@ -496,7 +494,6 @@ function renderDecision(event, eventIndex, time) {
     ? event.candidates.map((candidate) => `${state.config.core.strategies[candidate.strategy]?.label || candidate.strategy} ${candidate.utility ?? "—"}`).join(" / ")
     : "单路径规则";
   renderToolTrace();
-  $("#evidenceList").innerHTML = event.evidence.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
   const hasDiscussionEvidence = state.session.transcript.some((line) => line.start <= time && line.type === EVENT_TYPES.PARTICIPANT_UTTERANCE);
   if (hasDiscussionEvidence) {
     setMetric("participation", event.metrics.participation, ["不开放", "偏不开放", "偏开放", "开放"], event.stage);
@@ -640,7 +637,6 @@ function renderLiveJudgment(signal) {
   $("#followUp").textContent = decision.followUp;
   $("#decisionStatus").textContent = decision.strategy === "observe" ? "实时观察" : "准备介入";
   $("#decisionStatus").className = `decision-tag ${decision.strategy === "observe" ? "calm" : "active"}`;
-  $("#evidenceList").innerHTML = `<li>${decision.reason}</li><li>画面运动水平：${Math.round(signal.motion * 100)}%；画面亮度：${Math.round(signal.brightness * 100)}%。</li><li>当前浏览器版本尚未区分不同说话人。</li>`;
   renderLiveAction(decision.strategy);
   renderDecisionCycle(decision.strategy !== "observe", decision.strategy === "observe" ? 1 : 2);
   if (previous) announceLiveTransition(liveState, decision.title);
@@ -676,7 +672,6 @@ async function requestLiveAIDecision(signal, fallbackDecision) {
     $("#decisionConfidence").textContent = `${decision.confidence ?? "—"}%${gaps.length ? ` · 缺 ${gaps.length} 项证据` : ""}`;
     $("#decisionConfidence").title = gaps.join("；");
     $("#candidateSummary").textContent = decision.candidates?.map((candidate) => `${state.config.core.strategies[candidate.strategy]?.label || candidate.strategy} ${candidate.utility}`).join(" / ") || "等待候选";
-    $("#evidenceList").innerHTML = (decision.evidence.length ? decision.evidence : [decision.reason]).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
     renderLiveAction(decision.strategy);
     if (decision.utterance) applyActionOutput(state.config.core.strategies[decision.strategy], decision.utterance);
   } catch (error) {
