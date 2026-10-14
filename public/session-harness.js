@@ -138,9 +138,80 @@ function ownerForPhase(phase) {
   return { activeAgent: "router", activeWorkflow: null };
 }
 
-function parseVoteLedger(events, time) {
-  const records = events.filter((event) => event.start <= time && event.type === EVENT_TYPES.DEVICE_EVENT && /投票|选择|按下|结果/.test(event.text));
-  return Object.freeze({ status: records.length ? "collecting" : "empty", records: Object.freeze(records.map((event) => Object.freeze({ eventId: event.id, text: event.text }))) });
+const CHINESE_NUMBERS = Object.freeze({ "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10 });
+
+function optionFromText(text, candidates) {
+  const value = String(text || "");
+  const direct = candidates.find((candidate) => value.includes(candidate.label));
+  if (direct) return direct;
+  const canonical = (input) => String(input || "")
+    .replace(/\s|AI|人工智能/gi, "")
+    .replace(/收集(?:加|后)?组合/g, "收集组合")
+    .replace(/真实(?:的)?声音/g, "真实声音")
+    .replace(/摊位角色(?:之间)?的?/g, "摊位角色");
+  const normalizedValue = canonical(value);
+  const semantic = candidates.find((candidate) => {
+    const label = canonical(candidate.label);
+    return label.length >= 3 && normalizedValue.includes(label);
+  });
+  if (semantic) return semantic;
+  const ordinalMatch = value.match(/(?:方案|选项|第)\s*([一二三四1-4A-D])(?:个|项)?|(?:投|选|支持)\s*([A-D])(?:方案|选项)?/i);
+  const ordinal = ordinalMatch?.[1] || ordinalMatch?.[2];
+  if (!ordinal) return null;
+  const index = /[A-D]/i.test(ordinal) ? ordinal.toUpperCase().charCodeAt(0) - 64 : Number(ordinal) || CHINESE_NUMBERS[ordinal];
+  return candidates[index - 1] || null;
+}
+
+function parseVoteLedger(events, time, candidates = [], participants = []) {
+  const visible = events.filter((event) => event.start <= time);
+  const participantIds = new Set(participants.map((participant) => String(participant.id)));
+  const byParticipant = new Map();
+  const sourceEvents = [];
+  let declaredWinner = null;
+  let declaredCount = 0;
+  for (const event of visible) {
+    const isVoteText = /投票|投给|我(?:先|要|准备)?投|支持|选择|选项|方案.{0,3}(?:一|二|三|四|[A-D1-4])|按下|结果|胜出|一致/.test(event.text);
+    if (!isVoteText) continue;
+    const option = optionFromText(event.text, candidates);
+    if (event.type === EVENT_TYPES.PARTICIPANT_UTTERANCE && participantIds.has(event.speaker) && option && /投|支持|选择|倾向|就选/.test(event.text)) {
+      byParticipant.set(event.speaker, Object.freeze({ participantId: event.speaker, candidateId: option.id, label: option.label, eventId: event.id }));
+      sourceEvents.push(event);
+    }
+    if ([EVENT_TYPES.DEVICE_EVENT, EVENT_TYPES.ROBOT_UTTERANCE].includes(event.type)) {
+      if (option && /按下|投票|选择/.test(event.text)) {
+        const participantList = event.text.match(/([A-Za-z0-9](?:\s*[、，,]\s*[A-Za-z0-9])+).{0,6}(?:依次|分别|都|全员|按下)/)?.[1] || "";
+        const listedParticipants = participantList.match(/[A-Za-z0-9]/g) || [];
+        for (const participantId of listedParticipants) {
+          if (participantIds.has(participantId)) byParticipant.set(participantId, Object.freeze({ participantId, candidateId: option.id, label: option.label, eventId: event.id }));
+        }
+      }
+      for (const match of event.text.matchAll(/([A-Za-z0-9])\s*(?:选择|投给|投了?|按下)\s*([^，。；;]+)/g)) {
+        const selected = optionFromText(match[2], candidates);
+        if (participantIds.has(match[1]) && selected) byParticipant.set(match[1], Object.freeze({ participantId: match[1], candidateId: selected.id, label: selected.label, eventId: event.id }));
+      }
+      const countMatch = event.text.match(/([一二三四五六七八九十\d]+)票.{0,5}(?:支持|选择|投给|胜出)\s*([^，。；;]+)/);
+      const resultOption = optionFromText(countMatch?.[2] || event.text, candidates);
+      if (resultOption && /投票结束|结果|胜出|一致|\d+票|[一二三四五六七八九十]票/.test(event.text)) {
+        declaredWinner = resultOption;
+        declaredCount = Number(countMatch?.[1]) || CHINESE_NUMBERS[countMatch?.[1]] || (/一致/.test(event.text) ? participants.length : 0);
+      }
+      sourceEvents.push(event);
+    }
+  }
+  const records = [...byParticipant.values()];
+  const tallies = candidates.map((candidate) => Object.freeze({
+    candidateId: candidate.id,
+    label: candidate.label,
+    count: records.filter((record) => record.candidateId === candidate.id).length + (declaredWinner?.id === candidate.id && !records.length ? declaredCount : 0)
+  }));
+  const winner = declaredWinner || [...tallies].sort((a, b) => b.count - a.count)[0];
+  return Object.freeze({
+    status: sourceEvents.length ? (/投票结束|结果|胜出|一致/.test(sourceEvents.at(-1)?.text || "") ? "complete" : "collecting") : "empty",
+    records: Object.freeze(records),
+    tallies: Object.freeze(tallies),
+    winner: winner?.count || declaredWinner ? Object.freeze({ candidateId: winner.candidateId || winner.id, label: winner.label, count: Math.max(winner.count || 0, declaredCount) }) : null,
+    sourceEvents: Object.freeze(sourceEvents.map((event) => Object.freeze({ eventId: event.id, text: event.text })))
+  });
 }
 
 export class SessionHarness {
@@ -183,7 +254,7 @@ export class SessionHarness {
       podMap: Object.freeze(this.participants.map((participant, index) => Object.freeze({ participantId: participant.id, podId: `pod-${index + 1}` }))),
       currentEvent,
       candidates,
-      voteLedger: parseVoteLedger(this.eventLog, safeTime),
+      voteLedger: parseVoteLedger(this.eventLog, safeTime, candidates.items, this.participants),
       transitionHistory: Object.freeze([...this.transitionHistory])
     });
     return this.blackboard;

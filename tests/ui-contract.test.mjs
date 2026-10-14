@@ -239,7 +239,8 @@ test("the current transcript speaker drives MooTu toward the matching pod", () =
 
 test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry stable", () => {
   assert.match(browserMujoco, /INVITE_APPROACH_RATIO = 0\.14/);
-  assert.match(browserMujoco, /attentionMode === "invite" \? "moving" : "turning"/);
+  assert.match(browserMujoco, /shouldMoveForInvitation \? "moving" : "turning"/);
+  assert.match(browserMujoco, /movedInviteTargets/);
   assert.match(browserMujoco, /邀请 \$\{speaker\} 发言/);
   assert.match(browserMujoco, /正在发言 · 保持中心并头颈朝向/);
   assert.match(browserMujoco, /kind: "passive"/);
@@ -265,7 +266,8 @@ test("speaker and encouragement targets use distinct pod signals", () => {
   assert.match(browserMujoco, /invitationPulse/);
   assert.match(browserMujoco, /demo\.attentionMode === "invite" \? invitedColor : SPEAKING/);
   assert.match(app, /classList\.toggle\("targeted", Boolean\(invitedTarget\)\)/);
-  assert.match(browserMujoco, /demo\.round = Math\.floor\(Math\.random\(\) \* demo\.activePods\.length\)/);
+  assert.match(browserMujoco, /demo\.icebreakerTargetIndex = Math\.max\(0, speakers\.indexOf\("A"\)\)/);
+  assert.match(browserMujoco, /demo\.round = demo\.icebreakerTargetIndex/);
   assert.match(enhancements, /\.pod-section\.targeted \.pod-row/);
 });
 

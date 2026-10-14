@@ -9,8 +9,9 @@ const RELAY = [1, 0.88, 0.22, 1];
 const SELECTED = [0.20, 1, 0.42, 1];
 const SPEAKING = [0.32, 0.74, 1, 1];
 const INVITED = [0.18, 1, 0.46, 1];
-const VOTE_A = [1, 0.55, 0.08, 1];
-const VOTE_B = [0.10, 0.62, 1, 1];
+const VOTE_COLORS = Object.freeze([
+  [1, 0.55, 0.08, 1], [0.10, 0.62, 1, 1], [0.48, 0.82, 0.38, 1], [0.62, 0.42, 0.92, 1]
+]);
 const APPROACH_DISTANCE = 0.020;
 const INVITE_APPROACH_RATIO = 0.14;
 const NAVIGATION_DURATION = 3;
@@ -188,13 +189,13 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     };
   });
   const bodyMatrix = new THREE.Matrix4();
-  const votePattern = ["A", "B", "A", "A", "B", "A"];
   const demo = {
     mode: "icebreaker", phase: "intro", phaseStarted: performance.now(), selectedPod: null,
     navigation: null, arrivedAt: null, navStarted: null, navStart: null, navTarget: null,
     navLast: null, navHeight: null, navKind: null, navDuration: null, votes: Array(6).fill(null), winner: null, round: 0,
     externalFocus: false, speaker: null, selectedPodNumber: null, attentionMode: null, action: null,
-    activePods: [...POD_LAYOUTS[3]], speakerPodMap: new Map([["A", { pod: 1, number: 1 }], ["B", { pod: 5, number: 2 }], ["C", { pod: 0, number: 3 }]])
+    activePods: [...POD_LAYOUTS[3]], speakerPodMap: new Map([["A", { pod: 1, number: 1 }], ["B", { pod: 5, number: 2 }], ["C", { pod: 0, number: 3 }]]),
+    votePlan: [], voteLabels: [], voteWinner: null, movedInviteTargets: new Set(), icebreakerTargetIndex: 0
   };
   let frameId = 0;
   let running = false;
@@ -263,7 +264,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     demo.speaker = null;
     demo.attentionMode = null;
     demo.action = null;
-    if (demo.mode === "icebreaker" && demo.activePods.length) demo.round = Math.floor(Math.random() * demo.activePods.length);
+    if (demo.mode === "icebreaker") demo.round = demo.icebreakerTargetIndex;
     startBaseTransition(now, { x: 0, y: 0, yaw: 0, duration: 1.35, kind: "scenario" });
     if (!running) pausedAt = now;
   };
@@ -272,6 +273,8 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     const layout = POD_LAYOUTS[speakers.length] || [];
     demo.activePods = [...layout];
     demo.speakerPodMap = new Map(speakers.map((speaker, index) => [speaker, { pod: layout[index], number: index + 1 }]));
+    demo.icebreakerTargetIndex = Math.max(0, speakers.indexOf("A"));
+    demo.movedInviteTargets.clear();
     mujoco.mj_resetData(model, data);
     mujoco.mj_forward(model, data);
     settleSimulation();
@@ -282,21 +285,23 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     const speaker = String(speakerId || "").trim();
     const target = demo.speakerPodMap.get(speaker);
     if (!target) return false;
-    if (demo.externalFocus && demo.speaker === speaker && demo.attentionMode === attentionMode && ["moving", "arrived"].includes(demo.navigation)) return true;
+    if (demo.externalFocus && demo.speaker === speaker && demo.attentionMode === attentionMode && ["moving", "arrived", "listening"].includes(demo.navigation)) return true;
     demo.mode = "discussion";
     demo.phase = "attention";
     const now = performance.now();
     demo.phaseStarted = now;
     demo.selectedPod = target.pod;
     demo.selectedPodNumber = target.number;
-    demo.navigation = attentionMode === "invite" ? "moving" : "turning";
+    const shouldMoveForInvitation = attentionMode === "invite" && !demo.movedInviteTargets.has(speaker);
+    demo.navigation = shouldMoveForInvitation ? "moving" : "turning";
     demo.arrivedAt = null;
     demo.externalFocus = true;
     demo.speaker = speaker;
     demo.attentionMode = attentionMode;
     const [podX, podY] = PODS[target.pod];
     const targetYaw = Math.atan2(-podX, podY);
-    if (attentionMode === "invite") {
+    if (shouldMoveForInvitation) {
+      demo.movedInviteTargets.add(speaker);
       startBaseTransition(now, {
         x: podX * INVITE_APPROACH_RATIO,
         y: podY * INVITE_APPROACH_RATIO,
@@ -305,7 +310,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
         kind: "invite"
       });
     } else {
-      startBaseTransition(now, { x: 0, y: 0, yaw: targetYaw, duration: 1.35, kind: "passive" });
+      startBaseTransition(now, { x: Number(data.qpos[freeQpos]), y: Number(data.qpos[freeQpos + 1]), yaw: targetYaw, duration: 1.35, kind: "passive" });
     }
     if (!running) pausedAt = now;
     return true;
@@ -362,11 +367,11 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     } else if (demo.mode === "voting" && demo.phase === "open") {
       const count = Math.min(demo.activePods.length, Math.floor(elapsed / 0.75));
       demo.votes.fill(null);
-      demo.activePods.forEach((pod, index) => { demo.votes[pod] = index < count ? votePattern[index] : null; });
+      demo.activePods.forEach((pod, index) => { demo.votes[pod] = index < count ? (demo.votePlan[index] ?? null) : null; });
       if (elapsed >= 5.5) {
         demo.phase = "result";
         demo.phaseStarted = now;
-        demo.winner = "A";
+        demo.winner = demo.voteWinner;
       }
     } else if (demo.mode === "voting" && elapsed >= 5) {
       demo.phase = "open";
@@ -396,7 +401,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
           : OFF;
       }
     } else {
-      for (const index of demo.activePods) colors[index] = demo.votes[index] === "A" ? VOTE_A : demo.votes[index] === "B" ? VOTE_B : OFF;
+      for (const index of demo.activePods) colors[index] = Number.isInteger(demo.votes[index]) ? (VOTE_COLORS[demo.votes[index]] || OFF) : OFF;
     }
     podGeomIds.forEach((id, index) => setColor(id, demo.activePods.includes(index) ? colors[index] : [0, 0, 0, 0]));
     podBaseGeomIds.forEach((id, index) => setColor(id, demo.activePods.includes(index) ? [0.10, 0.10, 0.12, 1] : [0, 0, 0, 0]));
@@ -418,9 +423,10 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
         ? `邀请 ${speaker} 发言 · ${demo.navigation === "arrived" ? "已轻微移动并头颈朝向" : "轻微朝目标方向移动中"}`
         : `${speaker} 正在发言 · 保持中心并头颈朝向`;
     } else {
-      const a = demo.votes.filter((vote) => vote === "A").length;
-      const b = demo.votes.filter((vote) => vote === "B").length;
-      label = demo.phase === "open" ? `投票进行中 · A ${a} / B ${b}` : `投票结果 · A 胜出 ${a}:${b}`;
+      const counts = demo.voteLabels.map((_, index) => demo.votes.filter((vote) => vote === index).length);
+      const summary = demo.voteLabels.map((item, index) => `${String.fromCharCode(65 + index)} ${counts[index]}`).join(" / ");
+      const winnerLabel = demo.voteWinner == null ? "等待有效投票" : (demo.voteLabels[demo.voteWinner] || `方案 ${String.fromCharCode(65 + demo.voteWinner)}`);
+      label = demo.phase === "open" ? `投票进行中${summary ? ` · ${summary}` : ""}` : `投票结果 · ${winnerLabel}`;
     }
     onStatus?.(label);
   };
@@ -443,7 +449,8 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
       headPitch = (Math.PI / 36) * Math.sin(elapsed * 2.5);
       neckSide = (7 * Math.PI / 180) * Math.sin(elapsed * 1.2);
     } else if (demo.mode === "voting" && demo.phase === "result") {
-      const [tx, ty] = demo.winner === "A" ? [-0.013, 0.020] : [0.013, 0.020];
+      const winnerSide = demo.winner == null ? 0 : demo.winner % 2 === 0 ? -1 : 1;
+      const [tx, ty] = [winnerSide * 0.013, 0.020];
       const dx = tx - Number(data.qpos[freeQpos]);
       const dy = ty - Number(data.qpos[freeQpos + 1]);
       headYaw = Math.max(-0.61, Math.min(0.61, wrapAngle(Math.atan2(-dx, dy) - baseYaw())));
@@ -616,6 +623,20 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     setAction,
     setScenario,
     configureParticipants,
+    shouldMoveForInvite(speaker) {
+      return !demo.movedInviteTargets.has(String(speaker || "").trim());
+    },
+    setVotingState({ candidates = [], records = [], winner = null } = {}) {
+      demo.voteLabels = candidates.map((candidate) => String(candidate.label || candidate)).slice(0, 4);
+      const candidateIndex = new Map(candidates.map((candidate, index) => [candidate.id, index]));
+      const participantVotes = new Map(records.map((record) => [record.participantId, candidateIndex.get(record.candidateId)]));
+      demo.votePlan = [...demo.speakerPodMap.keys()].map((speaker) => participantVotes.get(speaker) ?? null);
+      if (!demo.votePlan.some(Number.isInteger) && winner?.candidateId && winner.count > 0) {
+        const index = candidateIndex.get(winner.candidateId);
+        demo.votePlan = demo.votePlan.map((_, participantIndex) => participantIndex < winner.count ? index : null);
+      }
+      demo.voteWinner = winner?.candidateId ? candidateIndex.get(winner.candidateId) ?? null : null;
+    },
     focusSpeaker,
     setPlaying(active) {
       const nextRunning = Boolean(active);

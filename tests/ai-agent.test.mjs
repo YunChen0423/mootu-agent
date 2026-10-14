@@ -137,6 +137,25 @@ test("quiet-member invitations have a dedicated longer cooldown", () => {
   assert.match(events.find((event) => event.time === 220).reason, /冷却期/);
 });
 
+test("convergence prompts are spaced and stop once the recent content has converged", () => {
+  const observe = { strategy: "observe", benefit: 20, disruption: 0, goal_fit: 20, confidence: 80 };
+  const observations = [100, 140, 180, 220, 260].map((time, index) => ({
+    time,
+    suggestedStage: "converge",
+    metrics: { participation: 70, diversity: 78, flow: 72 },
+    diagnostics: { discussion_start_seconds: 0, discussion_elapsed_seconds: time, quiet_seconds: 0, quiet_share: 0.3, quiet_target: "C", recent_novelty: index < 3 ? 0.8 : 0.2 },
+    evidence: [],
+    recentTranscript: []
+  }));
+  const raw = observations.map(({ time }) => ({ time, stage_recommendation: "converge", evidence: [], missing_evidence: [], candidates: [observe] }));
+  const events = sanitizeEvents(raw, observations, [{ id: "A" }, { id: "B" }, { id: "C" }], config);
+  const prompts = events.filter((event) => ["prepare_convergence", "advance_decision"].includes(event.strategy));
+  assert.ok(prompts.length <= 2);
+  assert.ok(prompts.every((event, index) => index === 0 || event.time - prompts[index - 1].time >= 30));
+  assert.ok(events.filter((event) => event.time >= 220).every((event) => event.strategy !== "advance_decision"));
+  assert.ok(events.filter((event) => event.time >= 220).every((event) => event.stageRecommendation === "converge"));
+});
+
 test("live decisions run the same complete tool chain", async () => {
   const runtime = completeRuntime({
     stage_recommendation: "diverge",

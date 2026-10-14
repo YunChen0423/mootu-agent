@@ -156,6 +156,7 @@ function configureMujocoParticipants() {
 
 function syncMujocoPhase(blackboard) {
   renderMujocoCandidates(blackboard);
+  state.mujocoRuntime?.setVotingState({ candidates: blackboard.candidates?.items || [], records: blackboard.voteLedger?.records || [], winner: blackboard.voteLedger?.winner || null });
   const journeyKey = `${blackboard.phase}:${blackboard.discussionStage || "none"}`;
   if (state.macroPhase === journeyKey) return;
   state.macroPhase = journeyKey;
@@ -598,12 +599,13 @@ function renderDecision(event, eventIndex, time) {
   const invitedTarget = invitedParticipantFromLine(robotLine) || event.target || null;
   const embodimentTarget = invitedTarget || currentSpeaker;
   const attentionMode = invitedTarget ? "invite" : "passive";
+  const shouldMoveForInvitation = invitedTarget ? (state.mujocoRuntime?.shouldMoveForInvite(invitedTarget) ?? true) : false;
   $("#robot").classList.toggle("intervening", intervening);
   orientRobotTo(embodimentTarget);
   const contextLines = state.session.transcript.filter((line) => line.start <= time && line.type === EVENT_TYPES.PARTICIPANT_UTTERANCE).slice(-6);
   const utteranceKey = `replay:${event.time}:${event.strategy}:${event.target || "group"}`;
   const renderedAction = invitedTarget
-    ? { ...action, move: `轻微朝 ${invitedTarget} 方向移动`, orient: `头颈朝向 ${invitedTarget}`, posture: "轻微前倾", voice: "温和邀请", expression: "鼓励" }
+    ? { ...action, move: shouldMoveForInvitation ? `轻微朝 ${invitedTarget} 方向移动一次` : "保持当前位置", orient: `头颈朝向 ${invitedTarget}`, posture: "轻微前倾", voice: "温和邀请", expression: "鼓励" }
     : robotLine
       ? { ...action, move: "回到中心", orient: "面向小组", posture: "中立", voice: "清晰引导", expression: "引导" }
     : embodimentTarget

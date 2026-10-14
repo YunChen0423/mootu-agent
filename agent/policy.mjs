@@ -71,6 +71,8 @@ export function sanitizeEvents(rawEvents, observations, participants, config) {
   const ids = new Set(participants.map((participant) => String(participant.id)));
   let lastIntervention = -Infinity;
   let lastInvitation = -Infinity;
+  let lastConvergencePrompt = -Infinity;
+  let convergencePromptCount = 0;
   let stage = "diverge";
   let convergenceVotes = 0;
   const events = observations.map((observation, index) => {
@@ -85,6 +87,8 @@ export function sanitizeEvents(rawEvents, observations, participants, config) {
     }
     const cooldown = observation.time - lastIntervention < config.thresholds.intervention_cooldown_seconds;
     const invitationCooldown = observation.time - lastInvitation < (config.thresholds.quiet_invitation_cooldown_seconds || config.thresholds.intervention_cooldown_seconds);
+    const convergencePromptCooldown = observation.time - lastConvergencePrompt < (config.thresholds.convergence_prompt_cooldown_seconds || 30);
+    const convergencePromptLimit = config.thresholds.max_convergence_prompts || 2;
     const selection = selectCandidate(raw, ids, config, { forceObserve: index === 0 || discussionWarmup, cooldown });
     let selected = selection.selected;
     let decisionReason = discussionWarmup ? "破冰结束后重新建立讨论基线，暂不沿用破冰阶段的沉默、参与或阶段判断。" : selection.reason;
@@ -101,7 +105,15 @@ export function sanitizeEvents(rawEvents, observations, participants, config) {
     if (selected.strategy === "observe" && invitationCooldown && quietEvidenceReady) {
       decisionReason = "同类邀请仍在冷却期，避免反复点名打断讨论。";
     }
-    if (selected.strategy === "observe" && justConverged) {
+    const contentHasConverged = stage === "converge" && (observation.diagnostics.recent_novelty <= 0.35 || observation.metrics.diversity < 60);
+    const convergencePromptAvailable = !convergencePromptCooldown && convergencePromptCount < convergencePromptLimit;
+    if (["prepare_convergence", "advance_decision"].includes(selected.strategy) && (!convergencePromptAvailable || contentHasConverged)) {
+      selected = defaultObserve(config);
+      decisionReason = contentHasConverged
+        ? "近期内容已经从增加方向转为比较、取舍与确认，判定为有效收敛，不再重复提示。"
+        : "收敛提示仍在独立冷却期或已达到本阶段次数上限，避免反复打断。";
+    }
+    if (selected.strategy === "observe" && justConverged && convergencePromptAvailable) {
       selected = forcedCandidate("prepare_convergence", null, "提示开始收敛", "阶段已经切换到收敛，但讨论仍保持高发散，需要明确发出阶段提示。", "我们已经有几个方向了，现在开始收敛，一起比较各方案的价值、成本和可行性。");
       decisionReason = "Harness 检测到发散→收敛切换，必须向小组明确播报阶段目标。";
       forcedByHarness = true;
@@ -110,17 +122,21 @@ export function sanitizeEvents(rawEvents, observations, participants, config) {
       selected = forcedCandidate("invite_quiet_member", target, `邀请 ${target} 补充意见`, `${target} 在讨论开始后的观察窗口内参与明显偏低；即使讨论持续流动，也需要给其发言入口。`);
       decisionReason = `Harness 检测到 ${target} 在讨论开始后的持续低参与，不以全场是否有人讲话作为邀请条件。`;
       forcedByHarness = true;
-    } else if (selected.strategy === "observe" && !cooldown && stage === "converge" && observation.metrics.diversity >= 67) {
+    } else if (selected.strategy === "observe" && !cooldown && convergencePromptAvailable && stage === "converge" && !contentHasConverged && observation.metrics.diversity >= 67) {
       selected = forcedCandidate("advance_decision", null, "提醒聚焦比较", "当前已处于收敛阶段，但新想法仍持续增加，需要把讨论拉回比较与取舍。", "现在先暂停增加新方向，请围绕现有方案比较价值、成本和可行性。");
       decisionReason = "Harness 检测到收敛阶段仍保持高发散，主动发出聚焦提示。";
       forcedByHarness = true;
     }
     if (selected.strategy !== "observe") lastIntervention = observation.time;
     if (selected.strategy === "invite_quiet_member") lastInvitation = observation.time;
+    if (["prepare_convergence", "advance_decision"].includes(selected.strategy)) {
+      lastConvergencePrompt = observation.time;
+      convergencePromptCount += 1;
+    }
     const evidence = (Array.isArray(raw.evidence) ? raw.evidence : observation.evidence).map((item) => text(item)).filter(Boolean).slice(0, 3);
     const utterance = selected.strategy === "observe" ? "" : text(selected.utterance, generateContextualUtterance({ strategy: selected.strategy, target: selected.target, stage, transcript: observation.recentTranscript })).slice(0, 80);
     return {
-      time: observation.time, stage, stageRecommendation: recommendation, stageVotes: convergenceVotes,
+      time: observation.time, stage, stageRecommendation: contentHasConverged ? "converge" : recommendation, stageVotes: convergenceVotes,
       strategy: selected.strategy, target: selected.target, title: selected.title,
       reason: decisionReason.slice(0, 220), evidence: evidence.length ? evidence : observation.evidence,
       missingEvidence: selection.missingEvidence, confidence: selected.confidence,

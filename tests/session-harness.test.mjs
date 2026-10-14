@@ -101,11 +101,13 @@ test("an explicit participant vote statement enters the voting workflow", () => 
     { start: 500, end: 510, speaker: "A", text: "我先投收集加组合，实体交互最完整。" },
     ...transcript.slice(8)
   ]);
-  const harness = createSessionHarness({ transcript: spokenVote, candidateIdeas: ["感官集章", "声音AI合成", "秘密任务"] });
+  const harness = createSessionHarness({ transcript: spokenVote, candidateIdeas: ["收集后组合", "声音AI合成", "秘密任务"] });
   assert.equal(harness.setTime(499, "converge").phase, SESSION_PHASES.DISCUSSION);
   assert.equal(harness.setTime(500, "converge").phase, SESSION_PHASES.VOTING);
   assert.equal(harness.blackboard.activeWorkflow, "voting");
   assert.equal(harness.blackboard.candidates.status, "ai_synthesized");
+  assert.equal(harness.blackboard.voteLedger.records[0].participantId, "A");
+  assert.equal(harness.blackboard.voteLedger.records[0].label, "收集后组合");
 });
 
 test("spoken voting waits for AI candidates instead of freezing transcript fragments", () => {
@@ -128,4 +130,13 @@ test("voting freezes one candidate snapshot through result confirmation", () => 
   assert.strictEqual(result, voting);
   assert.strictEqual(closed, voting);
   assert.deepEqual(result.items.map((item) => item.label), voting.items.map((item) => item.label));
+});
+
+test("vote results are derived from the uploaded transcript instead of a fixed pattern", () => {
+  const harness = createSessionHarness({ transcript, participants: participantSpeakers(transcript).map((id) => ({ id })) });
+  const result = harness.setTime(976, "converge");
+  assert.equal(result.voteLedger.status, "complete");
+  assert.equal(result.voteLedger.winner.label, "真实声音");
+  assert.equal(result.voteLedger.winner.count, 5);
+  assert.deepEqual(result.voteLedger.tallies.map((item) => item.count), [0, 5, 0]);
 });
