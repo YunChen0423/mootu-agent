@@ -12,7 +12,7 @@ const INVITED = [0.18, 1, 0.46, 1];
 const VOTE_A = [1, 0.55, 0.08, 1];
 const VOTE_B = [0.10, 0.62, 1, 1];
 const APPROACH_DISTANCE = 0.020;
-const INVITE_APPROACH_RATIO = 0.34;
+const INVITE_APPROACH_RATIO = 0.14;
 const NAVIGATION_DURATION = 3;
 const SPEAKER_NAVIGATION_DURATION = 1.8;
 
@@ -275,7 +275,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     mujoco.mj_resetData(model, data);
     mujoco.mj_forward(model, data);
     settleSimulation();
-    setScenario("icebreaker");
+    setScenario("discussion");
     return speakers.map((speaker, index) => ({ speaker, pod: index + 1 }));
   };
   const focusSpeaker = (speakerId, { attentionMode = "passive" } = {}) => {
@@ -350,7 +350,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
         demo.arrivedAt = null;
         clearNavigation();
       } else if (demo.phase === "returning" && demo.navigation === "home") {
-        demo.phase = "relay";
+        demo.phase = "complete";
         demo.phaseStarted = now;
         demo.selectedPod = null;
         demo.selectedPodNumber = null;
@@ -409,12 +409,13 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
       else if (demo.phase === "relay") label = `灯光接力 · Pod ${Math.floor(elapsed / 0.30) % demo.activePods.length + 1}`;
       else if (demo.phase === "selected" && demo.externalFocus) label = `${demo.speaker} 正在发言 · ${demo.navigation === "arrived" ? `已到达 Pod ${demo.selectedPodNumber}` : `前往 Pod ${demo.selectedPodNumber}`}`;
       else if (demo.phase === "selected") label = `选中 Pod ${demo.selectedPodNumber} · ${demo.navigation === "arrived" ? "邀请发言" : "靠近参与者"}`;
+      else if (demo.phase === "complete") label = "破冰完成 · 等待讨论";
       else label = "返回中心";
     } else if (demo.mode === "discussion") {
       const speaker = demo.speaker || "参与者";
       label = demo.attentionMode === "addressing" ? "MooTu 正在说话 · 面向小组"
         : demo.attentionMode === "invite"
-        ? `邀请 ${speaker} 发言 · ${demo.navigation === "arrived" ? "已靠近并头颈朝向" : "轻微靠近中"}`
+        ? `邀请 ${speaker} 发言 · ${demo.navigation === "arrived" ? "已轻微移动并头颈朝向" : "轻微朝目标方向移动中"}`
         : `${speaker} 正在发言 · 保持中心并头颈朝向`;
     } else {
       const a = demo.votes.filter((vote) => vote === "A").length;

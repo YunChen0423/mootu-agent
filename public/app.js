@@ -187,7 +187,9 @@ function renderMujocoCandidates(blackboard) {
     return;
   }
   const items = blackboard.candidates?.items?.slice(0, 4) || [];
-  const sourceLabel = blackboard.candidates?.status === "ai_synthesized" ? "DeepSeek 综合" : "发言确认";
+  const sourceLabel = blackboard.candidates?.status === "ai_synthesized" ? "DeepSeek 综合"
+    : blackboard.candidates?.status === "pending_ai" ? "等待 DeepSeek 综合"
+      : "发言确认";
   panel.innerHTML = `<small>${blackboard.phase === SESSION_PHASES.RESULT_CONFIRMATION ? "投票结果" : `当前投票方案 · ${sourceLabel}`}</small><div>${items.length
     ? items.map((item, index) => `<span><b>${String.fromCharCode(65 + index)}</b>${escapeHtml(item.label)}</span>`).join("")
     : "<span>候选方案整理中</span>"}</div>`;
@@ -229,7 +231,7 @@ function candidateInformation(blackboard = state.sessionHarness?.blackboard) {
   if ([SESSION_PHASES.VOTING, SESSION_PHASES.RESULT_CONFIRMATION].includes(blackboard?.phase) && snapshot?.items?.length) {
     return snapshot.items.slice(0, 3).map((item) => String(item.label || "").slice(0, 8)).filter(Boolean).join(" · ");
   }
-  return state.screenTopic || "讨论主题提炼中";
+  return "";
 }
 
 function renderProtocolDecision(blackboard, fallbackEvent, eventIndex) {
@@ -261,7 +263,8 @@ function renderProtocolDecision(blackboard, fallbackEvent, eventIndex) {
   $("#robot").classList.toggle("intervening", blackboard.phase !== SESSION_PHASES.WAITING && blackboard.phase !== SESSION_PHASES.CLOSED);
   orientRobotTo(null);
   $("#robotMood").textContent = `${copy.status} · ${copy.owner}`;
-  applyActionOutput(action, blackboard.currentEvent?.type === EVENT_TYPES.ROBOT_UTTERANCE ? blackboard.currentEvent.text : "", candidateInformation(blackboard));
+  const showDisplay = [SESSION_PHASES.VOTING, SESSION_PHASES.RESULT_CONFIRMATION].includes(blackboard.phase);
+  applyActionOutput(action, blackboard.currentEvent?.type === EVENT_TYPES.ROBOT_UTTERANCE ? blackboard.currentEvent.text : "", candidateInformation(blackboard), { showDisplay });
   $("#podTarget").textContent = blackboard.activeWorkflow ? `${copy.owner} · ${blackboard.participants.length} 个 Pod` : "群体陪伴";
   $("#podActions").textContent = blackboard.activeWorkflow ? "流程受全局 Harness 校验" : "等待阶段事件";
   $("#podOrb").classList.toggle("active", Boolean(blackboard.activeWorkflow));
@@ -453,10 +456,10 @@ function renderParticipation(time) {
   });
 }
 
-function applyActionOutput(action, utterance, information = utterance) {
+function applyActionOutput(action, utterance, information = utterance, { showDisplay = false } = {}) {
   $("#agentSpeechText").textContent = utterance;
   $("#agentSpeech").classList.toggle("show", Boolean(utterance));
-  $("#coreActions").innerHTML = Object.entries(action).filter(([key]) => key !== "label").map(([key, value]) => `<div class="action" data-channel="${key}"><span>${channelLabel(key)}</span><strong>${escapeHtml(key === "display" ? information : value || "—")}</strong></div>`).join("");
+  $("#coreActions").innerHTML = Object.entries(action).filter(([key]) => key !== "label" && (key !== "display" || showDisplay)).map(([key, value]) => `<div class="action" data-channel="${key}"><span>${channelLabel(key)}</span><strong>${escapeHtml(key === "display" ? information : value || "—")}</strong></div>`).join("");
 }
 
 function setMujocoStatus(status, detail, connected = false) {
@@ -509,7 +512,7 @@ function dispatchMujocoCommand(event, force = false, utterance = "", embodiment 
     robot_speaking: Boolean(embodiment.robotSpeaking),
     attention_mode: embodiment.attentionMode || (event.target ? "invite" : "passive"),
     stage: event.stage || document.body.dataset.stage || "diverge",
-    core: { ...action, ...(embodiment.action || {}), display: embodiment.information || utterance || event.utterance || action.display || "" }
+    core: { ...action, ...(embodiment.action || {}), display: embodiment.showDisplay ? (embodiment.information || "") : "" }
   };
   state.pendingMujocoAction = command;
   state.mujocoRuntime?.setAction(command);
@@ -600,17 +603,17 @@ function renderDecision(event, eventIndex, time) {
   const contextLines = state.session.transcript.filter((line) => line.start <= time && line.type === EVENT_TYPES.PARTICIPANT_UTTERANCE).slice(-6);
   const utteranceKey = `replay:${event.time}:${event.strategy}:${event.target || "group"}`;
   const renderedAction = invitedTarget
-    ? { ...action, move: `稍微靠近 ${invitedTarget}`, orient: `头颈朝向 ${invitedTarget}`, posture: "轻微前倾", voice: "温和邀请", expression: "鼓励" }
+    ? { ...action, move: `轻微朝 ${invitedTarget} 方向移动`, orient: `头颈朝向 ${invitedTarget}`, posture: "轻微前倾", voice: "温和邀请", expression: "鼓励" }
     : robotLine
       ? { ...action, move: "回到中心", orient: "面向小组", posture: "中立", voice: "清晰引导", expression: "引导" }
     : embodimentTarget
       ? { ...action, move: "保持中心", orient: `头颈朝向 ${currentSpeaker}`, posture: "轻微倾向", voice: "保持安静", expression: "倾听" }
       : action;
   $("#robotMood").textContent = `${renderedAction.expression} · ${renderedAction.posture}`;
-  const utterance = robotLine?.text || event.utterance || contextualUtterance({ key: utteranceKey, strategy: event.strategy, target: invitedTarget, stage: event.stage, transcript: contextLines, action: renderedAction });
+  const utterance = robotLine?.text || contextualUtterance({ key: utteranceKey, strategy: event.strategy, target: invitedTarget, stage: event.stage, transcript: contextLines, action: renderedAction }) || event.utterance;
   const information = candidateInformation();
   applyActionOutput(renderedAction, utterance, information);
-  dispatchMujocoCommand(event, false, utterance, { target: invitedTarget, speaker: invitedTarget ? null : currentSpeaker, transcriptStart: activeLine?.start, robotSpeaking: Boolean(robotLine), attentionMode, action: renderedAction, information });
+  dispatchMujocoCommand(event, false, utterance, { target: invitedTarget, speaker: invitedTarget ? null : currentSpeaker, transcriptStart: activeLine?.start, robotSpeaking: Boolean(robotLine), attentionMode, action: renderedAction, information, showDisplay: false });
   const pod = invitedTarget ? state.config.pod.responses.low_participation : state.config.pod.responses.normal;
   $("#podTarget").textContent = invitedTarget ? `Pod ${invitedTarget} · 个体鼓励` : "群体陪伴";
   $("#podActions").textContent = `${pod.temperature} · ${pod.vibration} · ${pod.breathing}`;

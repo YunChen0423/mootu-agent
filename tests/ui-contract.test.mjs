@@ -8,6 +8,7 @@ const app = await readFile(new URL("../public/app.js", import.meta.url), "utf8")
 const browserMujoco = await readFile(new URL("../public/browser-mujoco.js", import.meta.url), "utf8");
 const styles = await readFile(new URL("../public/styles.css", import.meta.url), "utf8");
 const enhancements = await readFile(new URL("../public/enhancements.css", import.meta.url), "utf8");
+const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
 
 test("live mode exposes an explicit user-triggered camera control", () => {
   assert.match(html, /id="liveBtn"/);
@@ -81,11 +82,15 @@ test("speaking shares use one compact segmented bar", () => {
   assert.match(app, /segment-\$\{p\.id\}/);
 });
 
-test("embodied display copy is generated from recent discussion context", () => {
+test("DeepSeek generates contextual spoken invitations while display text is reserved for voting", () => {
   assert.match(app, /generateContextualUtterance/);
   assert.match(app, /\/api\/generate-message/);
   assert.match(app, /屏幕信息 · 显示文字/);
   assert.match(app, /candidateInformation/);
+  assert.match(app, /key !== "display" \|\| showDisplay/);
+  assert.match(app, /SESSION_PHASES\.VOTING, SESSION_PHASES\.RESULT_CONFIRMATION/);
+  assert.match(server, /禁止套用/);
+  assert.match(server, /具体话题或方案/);
   assert.doesNotMatch(app, /方案综合 v\$\{snapshot\.version\}/);
   assert.match(app, /slice\(0, 8\)/);
   assert.match(html, /id="agentSpeech"/);
@@ -95,7 +100,7 @@ test("embodied display copy is generated from recent discussion context", () => 
 test("spoken words and screen information are separate output surfaces", () => {
   assert.match(html, /id="mujocoScreen"[\s\S]*id="agentSpeech"/);
   assert.ok(html.indexOf('id="agentSpeech"') < html.indexOf('class="panel output-panel"'));
-  assert.match(app, /display: embodiment\.information/);
+  assert.match(app, /display: embodiment\.showDisplay/);
   assert.match(enhancements, /action\[data-channel="display"\]/);
   assert.match(enhancements, /\.mujoco-screen \.spoken-output/);
 });
@@ -233,7 +238,7 @@ test("the current transcript speaker drives MooTu toward the matching pod", () =
 });
 
 test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry stable", () => {
-  assert.match(browserMujoco, /INVITE_APPROACH_RATIO = 0\.34/);
+  assert.match(browserMujoco, /INVITE_APPROACH_RATIO = 0\.14/);
   assert.match(browserMujoco, /attentionMode === "invite" \? "moving" : "turning"/);
   assert.match(browserMujoco, /邀请 \$\{speaker\} 发言/);
   assert.match(browserMujoco, /正在发言 · 保持中心并头颈朝向/);
@@ -248,6 +253,12 @@ test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry s
   assert.match(app, /embodiment\.action/);
 });
 
+test("icebreaker animation runs once and then waits for discussion", () => {
+  assert.match(browserMujoco, /demo\.phase = "complete"/);
+  assert.match(browserMujoco, /破冰完成 · 等待讨论/);
+  assert.match(browserMujoco, /configureParticipants[\s\S]*setScenario\("discussion"\)/);
+});
+
 test("speaker and encouragement targets use distinct pod signals", () => {
   assert.match(browserMujoco, /const SPEAKING = \[0\.32, 0\.74, 1, 1\]/);
   assert.match(browserMujoco, /const INVITED = \[0\.18, 1, 0\.46, 1\]/);
@@ -258,11 +269,11 @@ test("speaker and encouragement targets use distinct pod signals", () => {
   assert.match(enhancements, /\.pod-section\.targeted \.pod-row/);
 });
 
-test("screen information uses an AI topic and scripted MooTu speech remains visible", () => {
+test("AI topic stays internal until voting and scripted MooTu speech remains visible", () => {
   assert.match(app, /state\.screenTopic/);
   assert.match(app, /const normalizeScreenTopic/);
   assert.match(app, /result\.analysis\?\.screenTopic/);
-  assert.match(app, /robotLine\?\.text \|\| event\.utterance/);
+  assert.match(app, /robotLine\?\.text \|\| contextualUtterance/);
   assert.match(app, /invitedParticipantFromLine\(robotLine\) \|\| event\.target/);
   assert.match(browserMujoco, /MooTu 正在说话 · 面向小组/);
 });
@@ -286,6 +297,7 @@ test("MuJoCo overlays participant labels, speech, and voting candidates", () => 
   assert.match(app, /function renderMujocoCandidates/);
   assert.match(app, /当前投票方案/);
   assert.match(app, /DeepSeek 综合/);
+  assert.match(app, /等待 DeepSeek 综合/);
   assert.match(app, /发言确认/);
   assert.match(enhancements, /\.mujoco-participant-labels span/);
   assert.match(enhancements, /\.mujoco-candidates/);

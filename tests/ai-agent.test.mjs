@@ -121,6 +121,22 @@ test("icebreaker metrics cannot trigger an immediate discussion intervention or 
   assert.equal(events.find((event) => event.time === 220).stage, "converge");
 });
 
+test("quiet-member invitations have a dedicated longer cooldown", () => {
+  const observe = { strategy: "observe", benefit: 20, disruption: 0, goal_fit: 20, confidence: 80 };
+  const observations = [165, 220, 275, 330, 385].map((time) => ({
+    time,
+    suggestedStage: "diverge",
+    metrics: { participation: 35, diversity: 55, flow: 75 },
+    diagnostics: { discussion_start_seconds: 60, discussion_elapsed_seconds: time - 60, quiet_seconds: time - 60, quiet_share: 0, quiet_target: "C" },
+    evidence: [],
+    recentTranscript: [{ speaker: "A", text: "我们正在比较真实声音和秘密任务。" }]
+  }));
+  const raw = observations.map(({ time }) => ({ time, stage_recommendation: "diverge", evidence: [], missing_evidence: [], candidates: [observe] }));
+  const events = sanitizeEvents(raw, observations, [{ id: "A" }, { id: "B" }, { id: "C" }], config);
+  assert.deepEqual(events.filter((event) => event.strategy === "invite_quiet_member").map((event) => event.time), [165, 385]);
+  assert.match(events.find((event) => event.time === 220).reason, /冷却期/);
+});
+
 test("live decisions run the same complete tool chain", async () => {
   const runtime = completeRuntime({
     stage_recommendation: "diverge",

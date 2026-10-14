@@ -70,6 +70,7 @@ export function selectCandidate(raw, ids, config, { forceObserve = false, cooldo
 export function sanitizeEvents(rawEvents, observations, participants, config) {
   const ids = new Set(participants.map((participant) => String(participant.id)));
   let lastIntervention = -Infinity;
+  let lastInvitation = -Infinity;
   let stage = "diverge";
   let convergenceVotes = 0;
   const events = observations.map((observation, index) => {
@@ -83,6 +84,7 @@ export function sanitizeEvents(rawEvents, observations, participants, config) {
       if (convergenceVotes >= 2) stage = "converge";
     }
     const cooldown = observation.time - lastIntervention < config.thresholds.intervention_cooldown_seconds;
+    const invitationCooldown = observation.time - lastInvitation < (config.thresholds.quiet_invitation_cooldown_seconds || config.thresholds.intervention_cooldown_seconds);
     const selection = selectCandidate(raw, ids, config, { forceObserve: index === 0 || discussionWarmup, cooldown });
     let selected = selection.selected;
     let decisionReason = discussionWarmup ? "破冰结束后重新建立讨论基线，暂不沿用破冰阶段的沉默、参与或阶段判断。" : selection.reason;
@@ -92,13 +94,20 @@ export function sanitizeEvents(rawEvents, observations, participants, config) {
     const quietEvidenceReady = observation.diagnostics.discussion_elapsed_seconds >= config.thresholds.quiet_member_seconds
       && observation.diagnostics.quiet_seconds >= config.thresholds.quiet_member_seconds
       && observation.diagnostics.quiet_share < 0.12;
+    if (selected.strategy === "invite_quiet_member" && invitationCooldown) {
+      selected = defaultObserve(config);
+      decisionReason = "同类邀请仍在冷却期，避免反复点名打断讨论。";
+    }
+    if (selected.strategy === "observe" && invitationCooldown && quietEvidenceReady) {
+      decisionReason = "同类邀请仍在冷却期，避免反复点名打断讨论。";
+    }
     if (selected.strategy === "observe" && justConverged) {
       selected = forcedCandidate("prepare_convergence", null, "提示开始收敛", "阶段已经切换到收敛，但讨论仍保持高发散，需要明确发出阶段提示。", "我们已经有几个方向了，现在开始收敛，一起比较各方案的价值、成本和可行性。");
       decisionReason = "Harness 检测到发散→收敛切换，必须向小组明确播报阶段目标。";
       forcedByHarness = true;
-    } else if (selected.strategy === "observe" && !cooldown && quietEvidenceReady) {
+    } else if (selected.strategy === "observe" && !cooldown && !invitationCooldown && quietEvidenceReady) {
       const target = observation.diagnostics.quiet_target;
-      selected = forcedCandidate("invite_quiet_member", target, `邀请 ${target} 补充意见`, `${target} 在讨论开始后的观察窗口内参与明显偏低；即使讨论持续流动，也需要给其发言入口。`, `${target}，讨论在继续，也想听听你的判断。你更支持哪个方向？`);
+      selected = forcedCandidate("invite_quiet_member", target, `邀请 ${target} 补充意见`, `${target} 在讨论开始后的观察窗口内参与明显偏低；即使讨论持续流动，也需要给其发言入口。`);
       decisionReason = `Harness 检测到 ${target} 在讨论开始后的持续低参与，不以全场是否有人讲话作为邀请条件。`;
       forcedByHarness = true;
     } else if (selected.strategy === "observe" && !cooldown && stage === "converge" && observation.metrics.diversity >= 67) {
@@ -107,6 +116,7 @@ export function sanitizeEvents(rawEvents, observations, participants, config) {
       forcedByHarness = true;
     }
     if (selected.strategy !== "observe") lastIntervention = observation.time;
+    if (selected.strategy === "invite_quiet_member") lastInvitation = observation.time;
     const evidence = (Array.isArray(raw.evidence) ? raw.evidence : observation.evidence).map((item) => text(item)).filter(Boolean).slice(0, 3);
     const utterance = selected.strategy === "observe" ? "" : text(selected.utterance, generateContextualUtterance({ strategy: selected.strategy, target: selected.target, stage, transcript: observation.recentTranscript })).slice(0, 80);
     return {

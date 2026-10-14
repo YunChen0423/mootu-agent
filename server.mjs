@@ -41,7 +41,7 @@ async function generateMessage(payload) {
       messages: [
         {
           role: "system",
-          content: "你是 MooTu 小组讨论主持机器人。根据最近的真实讨论生成一句自然、具体、简短的中文介入语。不得捏造讨论中未出现的事实，不输出分析过程，不超过45个汉字。严格输出 JSON：{\"utterance\":string}。"
+          content: "你是 MooTu 小组讨论主持机器人。根据最近的真实讨论生成一句自然、具体、简短的中文介入语。邀请低参与成员时，必须点出最近讨论中的具体话题或方案，再向目标成员提出与该话题直接相关的开放问题；禁止套用‘讨论在继续’‘你更支持哪个方向’等固定模板。不得捏造讨论中未出现的事实，不输出分析过程，不超过45个汉字。严格输出 JSON：{\"utterance\":string}。"
         },
         {
           role: "user",

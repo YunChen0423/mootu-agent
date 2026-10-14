@@ -95,6 +95,31 @@ test("participant questions about voting do not prematurely enter or freeze the 
   assert.equal(harness.setTime(904).phase, SESSION_PHASES.VOTING);
 });
 
+test("an explicit participant vote statement enters the voting workflow", () => {
+  const spokenVote = annotateTranscript([
+    ...transcript.slice(0, 8),
+    { start: 500, end: 510, speaker: "A", text: "我先投收集加组合，实体交互最完整。" },
+    ...transcript.slice(8)
+  ]);
+  const harness = createSessionHarness({ transcript: spokenVote, candidateIdeas: ["感官集章", "声音AI合成", "秘密任务"] });
+  assert.equal(harness.setTime(499, "converge").phase, SESSION_PHASES.DISCUSSION);
+  assert.equal(harness.setTime(500, "converge").phase, SESSION_PHASES.VOTING);
+  assert.equal(harness.blackboard.activeWorkflow, "voting");
+  assert.equal(harness.blackboard.candidates.status, "ai_synthesized");
+});
+
+test("spoken voting waits for AI candidates instead of freezing transcript fragments", () => {
+  const spokenVote = annotateTranscript([
+    ...transcript.slice(0, 8),
+    { start: 500, end: 510, speaker: "A", text: "我先投收集加组合，实体交互最完整。" },
+    ...transcript.slice(8)
+  ]);
+  const harness = createSessionHarness({ transcript: spokenVote });
+  assert.equal(harness.setTime(500, "converge").phase, SESSION_PHASES.VOTING);
+  assert.equal(harness.blackboard.candidates.status, "pending_ai");
+  assert.equal(harness.blackboard.candidates.items.length, 0);
+});
+
 test("voting freezes one candidate snapshot through result confirmation", () => {
   const harness = createSessionHarness({ transcript });
   const voting = harness.setTime(904).candidates;

@@ -110,7 +110,11 @@ function buildBoundaries(events) {
   const discussion = icebreaker == null ? firstParticipant : (afterIcebreaker[1]?.start ?? afterIcebreaker[0]?.end ?? firstParticipant);
   const ballotPreparation = findStart(events, (event) => includesAny(event.text, [/讨论即将结束/, /整理.{0,6}(?:候选|方案)/, /三个(?:候选|选择|方案)/]));
   const workflowEvents = events.filter((event) => [EVENT_TYPES.ROBOT_UTTERANCE, EVENT_TYPES.DEVICE_EVENT].includes(event.type));
-  const voting = findStart(workflowEvents, (event) => includesAny(event.text, [/请.{0,8}(?:pod|Pod).{0,6}投票/, /显示.{0,8}(?:选项|方案)/, /开始投票/, /按下.{0,8}(?:pod|Pod)/]));
+  const explicitVoting = findStart(workflowEvents, (event) => includesAny(event.text, [/请.{0,8}(?:pod|Pod).{0,6}投票/, /显示.{0,8}(?:选项|方案)/, /开始投票/, /按下.{0,8}(?:pod|Pod)/]));
+  const spokenVoting = findStart(events, (event) => event.type === EVENT_TYPES.PARTICIPANT_UTTERANCE
+    && !/[？?]|是不是|要不要/.test(event.text)
+    && includesAny(event.text, [/我(?:先|要|准备)?投(?:票)?/, /(?:我们|大家)(?:现在|就|先)?(?:开始)?投票/, /(?:那就|现在|开始)(?:用.{0,6})?(?:投票|投一个|选一个)/]));
+  const voting = explicitVoting == null ? spokenVoting : spokenVoting == null ? explicitVoting : Math.min(explicitVoting, spokenVoting);
   const resultConfirmation = findStart(workflowEvents, (event) => includesAny(event.text, [/投票结束/, /公布.{0,6}结果/, /一致选择/, /最终选择/])) ;
   const closed = findStart(events, (event) => includesAny(event.text, [/讨论到这里结束/, /今天.{0,8}结束/, /本次.{0,8}结束/, /会话结束/]));
   return Object.freeze({ icebreaker, discussion, ballotPreparation, voting, resultConfirmation, closed });
@@ -162,8 +166,11 @@ export class SessionHarness {
     const owner = ownerForPhase(phase);
     const liveCandidates = extractCandidates(this.eventLog, safeTime, this.candidateIdeas);
     const hasEnteredVoting = [SESSION_PHASES.VOTING, SESSION_PHASES.RESULT_CONFIRMATION, SESSION_PHASES.CLOSED].includes(phase);
-    if (hasEnteredVoting && !this.votingCandidates) this.votingCandidates = liveCandidates;
-    const candidates = hasEnteredVoting ? this.votingCandidates : liveCandidates;
+    const candidateSnapshotReady = ["ready", "ai_synthesized"].includes(liveCandidates.status);
+    if (hasEnteredVoting && !this.votingCandidates && candidateSnapshotReady) this.votingCandidates = liveCandidates;
+    const candidates = hasEnteredVoting
+      ? this.votingCandidates || Object.freeze({ version: 0, status: "pending_ai", items: Object.freeze([]) })
+      : liveCandidates;
     this.blackboard = Object.freeze({
       sessionTime: safeTime,
       phase,

@@ -8,7 +8,7 @@
     "strategies": {
       "invite_quiet_member": {
         "label": "低压力邀请",
-        "move": "稍微靠近少说者",
+        "move": "轻微朝少说者方向移动",
         "orient": "头颈朝向少说者",
         "posture": "前倾",
         "voice": "邀请",
@@ -74,6 +74,7 @@
   "thresholds": {
     "window_seconds": 60,
     "quiet_member_seconds": 70,
+    "quiet_invitation_cooldown_seconds": 180,
     "silence_thinking_seconds": 10,
     "silence_stalled_seconds": 18,
     "intervention_cooldown_seconds": 35,
