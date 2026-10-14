@@ -118,7 +118,7 @@ function configureMujocoParticipants() {
   const speakers = state.session?.participants?.map((participant) => participant.id) || [];
   if (!state.mujocoRuntime) return;
   state.mujocoRuntime.configureParticipants(speakers);
-  if (speakers.length) setMujocoStatus("MooTu 互动演示在线运行", `${speakers.length} 位发言人 · ${speakers.length} 个 Pod 一一对应`, true);
+  if (speakers.length) setMujocoStatus("MuJoCo 仿真已就绪", `${speakers.length} 位发言人 · ${speakers.length} 个 Pod 一一对应`, state.playing);
 }
 
 function syncMujocoPhase(blackboard) {
@@ -171,7 +171,6 @@ function candidateInformation(blackboard = state.sessionHarness?.blackboard) {
 
 function renderProtocolDecision(blackboard, fallbackEvent, eventIndex) {
   $(".state-block").hidden = true;
-  $("#decisionCycle").hidden = true;
   const copy = {
     [SESSION_PHASES.WAITING]: { owner: "阶段路由 Agent", status: "等待开始", title: "等待有效会话事件", reason: "当前只有会话基线，尚未检测到破冰或参与者发言。", next: "保持空状态，等待第一条有效事件", evidence: "尚无可用于阶段判断的事件" },
     [SESSION_PHASES.ICEBREAKER]: { owner: "破冰 Workflow", status: "流程执行中", title: "运行击鼓传花", reason: "阶段路由 Agent 已调用确定性的破冰流程，MooTu 正在通过 Pod 灯光接力选择首位发言者。", next: "等待被选参与者完成第一轮有效发言", evidence: "检测到击鼓传花或 Pod 接力事件" },
@@ -180,18 +179,12 @@ function renderProtocolDecision(blackboard, fallbackEvent, eventIndex) {
     [SESSION_PHASES.RESULT_CONFIRMATION]: { owner: "投票 Workflow", status: "确认结果", title: "确认投票结果", reason: "投票收集已经结束，系统正在公布结果并检查是否需要平票回退。", next: "确认共识后关闭会话；平票则返回候选整理", evidence: "检测到投票结束或结果公布事件" },
     [SESSION_PHASES.CLOSED]: { owner: "阶段路由 Agent", status: "会话完成", title: "会话已结束", reason: "开场、讨论与投票记录均已写入事件日志，当前快照进入只读完成态。", next: "保留日志与最终快照供复盘", evidence: "检测到明确的结束事件" }
   }[blackboard.phase];
-  $("#activeAgentLabel").textContent = copy.owner;
-  $("#decisionStatus").textContent = copy.status;
-  $("#decisionStatus").className = `decision-tag ${blackboard.phase === SESSION_PHASES.CLOSED ? "calm" : "active"}`;
   $("#decisionTitle").textContent = copy.title;
   $("#decisionReason").textContent = copy.reason;
   $("#followUp").textContent = copy.next;
   clearMetric("participation", METRIC_LABELS.participation);
   clearMetric("diversity", METRIC_LABELS.diversity);
   clearMetric("flow", METRIC_LABELS.flow);
-  const cycle = $("#decisionCycle");
-  ["路由", "校验", blackboard.activeWorkflow ? "工作流" : "Agent", "回写"].forEach((label, index) => { cycle.querySelectorAll("span")[index].textContent = label; });
-  cycle.querySelectorAll("span").forEach((step, index) => step.classList.toggle("active", index === (blackboard.phase === SESSION_PHASES.WAITING ? 0 : 2)));
   const action = state.config.core.strategies.observe;
   $("#robot").classList.toggle("intervening", blackboard.phase !== SESSION_PHASES.WAITING && blackboard.phase !== SESSION_PHASES.CLOSED);
   orientRobotTo(null);
@@ -261,16 +254,12 @@ function enterLiveSession() {
   $("#transcriptHint").textContent = "实时识别 · 超出后自动上滚";
   renderLiveTranscriptFeed();
   $(".state-block").hidden = false;
-  $("#decisionCycle").hidden = false;
   $("#decisionTitle").textContent = "建立现场基线";
   $("#decisionReason").textContent = "旧回放数据已清空，等待实时音频、画面与语音内容。";
   $("#followUp").textContent = "持续倾听并等待足够证据";
-  $("#decisionStatus").textContent = "现场初始化";
-  $("#decisionStatus").className = "decision-tag calm";
   clearMetric("participation", METRIC_LABELS.participation);
   clearMetric("diversity", METRIC_LABELS.diversity);
   clearMetric("flow", METRIC_LABELS.flow);
-  renderDecisionCycle(false, -1);
   renderLiveAction("observe");
 }
 
@@ -397,8 +386,15 @@ function setMujocoStatus(status, detail, connected = false) {
   $("#simulationTitle").title = `${status} · ${detail}`;
 }
 
+function syncMujocoPlayback() {
+  state.mujocoRuntime?.setPlaying(state.playing);
+  $("#mujocoScreen").classList.toggle("playing", state.playing);
+  const speakers = state.session?.participants?.length || 0;
+  setMujocoStatus(state.playing ? "MuJoCo 仿真正在运行" : "MuJoCo 仿真已暂停", `${speakers} 位发言人 · ${speakers} 个 Pod 一一对应`, state.playing);
+}
+
 async function initBrowserMujoco() {
-  setMujocoStatus("MooTu 互动演示加载中", "正在载入 run_interaction_demo.sh 场景", false);
+  setMujocoStatus("MuJoCo 仿真加载中", "正在载入 run_interaction_demo.sh 场景", false);
   try {
     state.mujocoRuntime = await createBrowserMujoco({
       canvas: $("#mujocoViewport"),
@@ -406,6 +402,7 @@ async function initBrowserMujoco() {
     });
     configureMujocoParticipants();
     $("#mujocoScreen").classList.add("streaming");
+    syncMujocoPlayback();
   } catch (error) {
     setMujocoStatus("MuJoCo 加载失败", "请刷新页面或检查网络", false);
     console.error("MuJoCo WASM initialization failed", error);
@@ -480,12 +477,8 @@ function renderToolTrace(trace = state.agentTrace) {
 
 function renderDecision(event, eventIndex, time) {
   $(".state-block").hidden = false;
-  $("#decisionCycle").hidden = false;
-  $("#activeAgentLabel").textContent = "讨论促进 + 方案综合";
   const action = state.config.core.strategies[event.strategy];
   const intervening = event.strategy !== "observe";
-  $("#decisionStatus").textContent = intervening ? "准备介入" : "持续观察";
-  $("#decisionStatus").className = `decision-tag ${intervening ? "active" : "calm"}`;
   $("#decisionTitle").textContent = event.title;
   $("#decisionReason").textContent = event.reason;
   $("#followUp").textContent = event.followUp;
@@ -510,10 +503,6 @@ function renderDecision(event, eventIndex, time) {
     clearMetric("diversity", METRIC_LABELS.diversity);
     clearMetric("flow", METRIC_LABELS.flow);
   }
-  const nextTime = state.events[eventIndex + 1]?.time ?? state.session.duration;
-  const phaseCount = intervening ? 4 : 2;
-  const cyclePhase = Math.min(phaseCount - 1, Math.floor(clamp((time - event.time) / Math.max(nextTime - event.time, 1), 0, 0.999) * phaseCount));
-  renderDecisionCycle(intervening, cyclePhase);
   const currentLine = transcriptAt(time);
   const currentSpeaker = currentLine?.type === EVENT_TYPES.PARTICIPANT_UTTERANCE ? currentLine.speaker : null;
   const embodimentTarget = event.target || (!intervening ? currentSpeaker : null);
@@ -565,17 +554,6 @@ function setMetric(name, value, labels, stage, enableWarning = true) {
     item.classList.toggle("active", index === stateIndex);
   });
   updateMetricGoal(name, stateIndex, stage, enableWarning);
-}
-
-function renderDecisionCycle(intervening, activeIndex) {
-  const cycle = $("#decisionCycle");
-  const steps = [...cycle.querySelectorAll("span")];
-  cycle.classList.toggle("observing-only", !intervening);
-  steps[0].textContent = "观察";
-  steps[1].textContent = "判断";
-  steps[2].textContent = intervening ? "介入" : "不介入";
-  steps[3].textContent = intervening ? "反馈" : "继续观察";
-  steps.forEach((item, index) => item.classList.toggle("active", index === activeIndex));
 }
 
 function setMetricOptions(name, labels, activeIndex, stage = document.body.dataset.stage || "diverge", showTarget = activeIndex >= 0) {
@@ -641,10 +619,7 @@ function renderLiveJudgment(signal) {
   $("#decisionTitle").textContent = decision.title;
   $("#decisionReason").textContent = decision.reason;
   $("#followUp").textContent = decision.followUp;
-  $("#decisionStatus").textContent = decision.strategy === "observe" ? "实时观察" : "准备介入";
-  $("#decisionStatus").className = `decision-tag ${decision.strategy === "observe" ? "calm" : "active"}`;
   renderLiveAction(decision.strategy);
-  renderDecisionCycle(decision.strategy !== "observe", decision.strategy === "observe" ? 1 : 2);
   if (previous) announceLiveTransition(liveState, decision.title);
   requestLiveAIDecision(signal, decision);
 }
@@ -739,6 +714,7 @@ function renderConfig() {
 function togglePlayback() {
   state.playing = !state.playing;
   $("#playBtn").textContent = state.playing ? "Ⅱ" : "▶";
+  syncMujocoPlayback();
   if ($("#video").hasAttribute("src")) {
     $("#video").playbackRate = timelineSpeed();
     state.playing ? $("#video").play() : $("#video").pause();
@@ -755,6 +731,7 @@ function togglePlayback() {
         state.playing = false;
         clearInterval(state.timer);
         $("#playBtn").textContent = "▶";
+        syncMujocoPlayback();
         setTime(state.session.duration);
         return;
       }

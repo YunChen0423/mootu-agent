@@ -1009,17 +1009,8 @@ body[data-stage="converge"] .metric-row.metric-warning {
   color: var(--ink);
 }
 
-/* Pod feedback is a first-class embodied output. */
-.pod-section {
-  position: relative;
-  margin-top: auto;
-  padding: 12px;
-  overflow: hidden;
-  border: 2px solid #f0bd35;
-  border-radius: 15px;
-  background: linear-gradient(135deg, #fff9e5, #fff2bd);
-  box-shadow: 0 8px 24px rgba(159, 113, 0, 0.12);
-}
+/* Pod behavior is shown as one concrete output card. */
+.pod-section { margin-top: auto; }
 
 .mujoco-link {
   display: flex;
@@ -1063,7 +1054,7 @@ body[data-stage="converge"] .metric-row.metric-warning {
 .mujoco-screen-bar { position: absolute; left: 12px; right: 12px; top: 10px; display: flex; justify-content: space-between; color: white; font-size: 9px; letter-spacing: .08em; text-shadow: 0 1px 4px #000; }
 .mujoco-screen-bar span { display: flex; align-items: center; gap: 6px; }
 .mujoco-screen-bar i { width: 6px; height: 6px; border-radius: 50%; background: #777; }
-.mujoco-screen.streaming .mujoco-screen-bar i { background: #44dc9f; box-shadow: 0 0 7px #44dc9f; }
+.mujoco-screen.playing .mujoco-screen-bar i { background: #44dc9f; box-shadow: 0 0 7px #44dc9f; }
 .mujoco-screen-bar b { max-width: 54%; overflow: hidden; text-overflow: ellipsis; }
 .mujoco-screen .agent-speech { z-index: 4; top: auto; left: 14px; right: 14px; bottom: 14px; max-width: none; background: rgba(255,255,255,.92); backdrop-filter: blur(9px); }
 .output-panel > .robot-visual { display: none; }
@@ -1075,26 +1066,8 @@ body[data-stage="converge"] .metric-row.metric-warning {
   .output-panel .action-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
-.pod-section::after {
-  content: "触觉反馈";
-  position: absolute;
-  top: 9px;
-  right: 10px;
-  color: #8a6500;
-  font-size: 8px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-}
-
-.pod-section .section-label { color: #7c5c08; }
 .pod-section .pod-row { margin-top: 7px; padding: 8px; background: rgba(255, 255, 255, 0.72); }
 .pod-section .pod-row strong { font-size: 13px; }
-
-body[data-stage="converge"] .pod-section {
-  border-color: var(--yellow);
-  background: linear-gradient(135deg, #332f24, #272722);
-  box-shadow: 0 8px 28px rgba(255, 184, 23, 0.12);
-}
 
 .live-mode .transcript-line {
   animation: none;
@@ -1186,16 +1159,16 @@ body[data-stage="converge"] .action[data-channel="display"] { background: #fff9e
 body[data-stage="converge"] .action strong,
 body[data-stage="converge"] .pod-row strong,
 body[data-stage="converge"] .timeline-event strong { color: var(--ink) !important; }
-body[data-stage="converge"] .pod-section { border-color: #f0bd35; background: linear-gradient(135deg, #fff9e5, #fff2bd); box-shadow: 0 8px 24px rgba(159,113,0,.12); }
+body[data-stage="converge"] .pod-section .pod-row { border-color: #f0bd35; background: linear-gradient(135deg, #fff9e5, #fff2bd); box-shadow: 0 8px 24px rgba(159,113,0,.12); }
 
 @media (min-width: 1051px) {
   .topbar { grid-template-columns: auto auto; justify-content: space-between; }
 }
 
-.simulation-title { margin: 14px 0 8px; color: var(--ink); font-size: 14px; }
+.simulation-title { margin: 0; color: var(--muted); font-size: 11px; font-weight: 800; white-space: nowrap; }
 .simulation-title::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: #aaa; }
 .simulation-title[data-status="connected"]::before { background: #25a47c; box-shadow: 0 0 0 4px rgba(37,164,124,.12); }
-.simulation-title + .mujoco-screen { margin-top: 0; }
+.simulation-panel > .mujoco-screen { margin-top: 10px; }
 
 .agent-map { position: relative; margin: 14px 0 6px; padding: 36px 10px 10px; overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; background: #faf9f6; scrollbar-width: thin; }
 .agent-position { position: sticky; left: 10px; width: max-content; margin-top: -27px; padding: 4px 8px; border-radius: 99px; color: #6d5000; background: #ffdf74; font-size: 9px; font-weight: 900; z-index: 3; }
@@ -1379,3 +1352,26 @@ body[data-stage="converge"] .pod-section { border-color: #f0bd35; background: li
 .reasoning-panel .decision-card .follow-up { display: none; }
 
 .scrubber input { cursor: ew-resize; touch-action: none; }
+
+/* Keep only the concrete Pod behavior card; labels and the outer feedback shell are redundant. */
+.pod-section,
+body[data-stage="converge"] .pod-section {
+  position: static;
+  margin-top: auto;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.pod-section::after { display: none; content: none; }
+.pod-section .pod-row,
+body[data-stage="converge"] .pod-section .pod-row {
+  margin-top: 8px;
+  padding: 10px;
+  border: 2px solid #f0bd35;
+  border-radius: 15px;
+  background: linear-gradient(135deg, #fff9e5, #fff2bd);
+  box-shadow: 0 8px 24px rgba(159,113,0,.12);
+}

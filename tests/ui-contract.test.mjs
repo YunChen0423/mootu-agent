@@ -28,8 +28,9 @@ test("nonlinear agent map replaces the redundant top stage strip", () => {
   assert.match(app, /tab\.dataset\.discussionStage === blackboard\.discussionStage/);
 });
 
-test("decision card appears before the reasoning cycle", () => {
-  assert.ok(html.indexOf("decision-card") < html.indexOf("Agent 决策循环"));
+test("agent judgment omits redundant ownership tags and decision-cycle chrome", () => {
+  assert.match(html, /class="decision-card"/);
+  assert.doesNotMatch(html, /decision-ownership|activeAgentLabel|decisionStatus|decisionCycle|Agent 决策循环/);
 });
 
 test("pi tool calls are visible in the agent state", () => {
@@ -95,10 +96,10 @@ test("spoken words and screen information are separate output surfaces", () => {
   assert.match(enhancements, /action\[data-channel="display"\]/);
 });
 
-test("discussion workflow is hidden for non-discussion agents", () => {
-  assert.match(html, /id="decisionCycle"[^>]*hidden/);
-  assert.match(app, /renderProtocolDecision[\s\S]*#decisionCycle"\)\.hidden = true/);
-  assert.match(app, /renderDecision[\s\S]*#decisionCycle"\)\.hidden = false/);
+test("group-state detail is hidden for non-discussion agents", () => {
+  assert.match(html, /class="state-block" hidden/);
+  assert.match(app, /renderProtocolDecision[\s\S]*\$\("\.state-block"\)\.hidden = true/);
+  assert.match(app, /renderDecision[\s\S]*\$\("\.state-block"\)\.hidden = false/);
 });
 
 test("desktop layout gives MuJoCo the wide upper area and moves judgment below it", () => {
@@ -130,10 +131,7 @@ test("judgment uses three-point scales, stage warnings, and no transition popup"
   assert.doesNotMatch(html, /id="transitionNotice"/);
   assert.match(app, /metricTarget/);
   assert.match(app, /metric-warning/);
-  assert.match(app, /phaseCount = intervening \? 4 : 2/);
-  assert.match(app, /intervening \? "介入" : "不介入"/);
-  assert.match(app, /intervening \? "反馈" : "继续观察"/);
-  assert.match(enhancements, /\.cycle\.observing-only/);
+  assert.doesNotMatch(html, /decisionCycle|观察→判断|观察 → 判断/);
 });
 
 test("input controls are icon-only on one line and timeline seeking can move backward while playing", () => {
@@ -176,7 +174,7 @@ test("AI analysis starts automatically without a retry button", () => {
 
 test("embodied output reproduces the interaction demo in browser MuJoCo", () => {
   assert.match(html, /id="mujocoViewport"/);
-  assert.match(html, /id="simulationTitle"[^>]*>MooTu 实时互动演示/);
+  assert.match(html, /<h2>具身输出<\/h2>[\s\S]*id="simulationTitle"[^>]*>MuJoCo 仿真画面/);
   assert.doesNotMatch(html, /class="mujoco-link"/);
   assert.doesNotMatch(html, /id="icebreakerDemoBtn"|id="votingDemoBtn"|id="resetMujocoBtn"/);
   assert.match(app, /createBrowserMujoco/);
@@ -194,6 +192,22 @@ test("embodied output reproduces the interaction demo in browser MuJoCo", () => 
   assert.match(app, /version: 1/);
   assert.match(app, /dispatchMujocoCommand\(event/);
   assert.doesNotMatch(app, /ws:\/\/127\.0\.0\.1:8765/);
+});
+
+test("MuJoCo advances only while the left playback is running", () => {
+  assert.match(app, /function syncMujocoPlayback/);
+  assert.match(app, /state\.mujocoRuntime\?\.setPlaying\(state\.playing\)/);
+  assert.match(app, /function togglePlayback[\s\S]*syncMujocoPlayback\(\)/);
+  assert.match(browserMujoco, /let running = false/);
+  assert.match(browserMujoco, /setPlaying\(active\)/);
+  assert.match(browserMujoco, /if \(!running\) return/);
+  assert.doesNotMatch(browserMujoco, /frameId = requestAnimationFrame\(animate\);\s*\n\s*return \{/);
+});
+
+test("Pod feedback keeps only the concrete behavior card", () => {
+  assert.doesNotMatch(html, /Pod 个体反馈|触觉反馈/);
+  assert.match(html, /class="pod-section">\s*<div class="pod-row"/);
+  assert.match(enhancements, /\.pod-section::after \{ display: none; content: none/);
 });
 
 test("the current transcript speaker drives MooTu toward the matching pod", () => {
@@ -244,7 +258,6 @@ test("uploaded speakers define the visible pod count and time zero has no metric
 
 test("session harness separates immutable events, blackboard and scoped agent ownership", () => {
   assert.match(app, /createSessionHarness/);
-  assert.match(app, /activeAgentLabel/);
   assert.match(app, /renderProtocolDecision/);
   assert.match(app, /EVENT_TYPES\.PARTICIPANT_UTTERANCE/);
   assert.match(html, /方案综合 Agent|讨论促进 Agent/);

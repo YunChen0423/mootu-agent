@@ -197,6 +197,8 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     activePods: [...POD_LAYOUTS[3]], speakerPodMap: new Map([["A", { pod: 1, number: 1 }], ["B", { pod: 5, number: 2 }], ["C", { pod: 0, number: 3 }]])
   };
   let frameId = 0;
+  let running = false;
+  let pausedAt = performance.now();
 
   const setControl = (name, value) => {
     const id = actuators[name];
@@ -247,6 +249,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     demo.attentionMode = null;
     demo.action = null;
     clearNavigation();
+    if (!running) pausedAt = now;
   };
   const configureParticipants = (speakerIds) => {
     const speakers = [...new Set((speakerIds || []).map((speaker) => String(speaker).trim()).filter(Boolean))].slice(0, 6);
@@ -266,7 +269,8 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     if (demo.externalFocus && demo.speaker === speaker && demo.attentionMode === attentionMode && ["moving", "arrived"].includes(demo.navigation)) return true;
     demo.mode = "discussion";
     demo.phase = "attention";
-    demo.phaseStarted = performance.now();
+    const now = performance.now();
+    demo.phaseStarted = now;
     demo.selectedPod = target.pod;
     demo.selectedPodNumber = target.number;
     demo.navigation = "moving";
@@ -275,6 +279,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     demo.speaker = speaker;
     demo.attentionMode = attentionMode;
     clearNavigation();
+    if (!running) pausedAt = now;
     return true;
   };
   const setAction = (action) => {
@@ -535,6 +540,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
   };
 
   const animate = (now) => {
+    if (!running) return;
     updateDemoState(now);
     updateDemoVisuals(now);
     applyDemoControls(now);
@@ -549,13 +555,31 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
   mujoco.mj_forward(model, data);
   settleSimulation();
   updateDemoVisuals(performance.now());
-  frameId = requestAnimationFrame(animate);
+  updateMeshes();
+  renderer.render(scene, camera);
 
   return {
     setAction,
     setScenario,
     configureParticipants,
     focusSpeaker,
+    setPlaying(active) {
+      const nextRunning = Boolean(active);
+      if (nextRunning === running) return;
+      const now = performance.now();
+      if (nextRunning) {
+        const pausedDuration = now - pausedAt;
+        demo.phaseStarted += pausedDuration;
+        if (demo.navStarted != null) demo.navStarted += pausedDuration;
+        if (demo.arrivedAt != null) demo.arrivedAt += pausedDuration;
+        running = true;
+        frameId = requestAnimationFrame(animate);
+      } else {
+        running = false;
+        pausedAt = now;
+        cancelAnimationFrame(frameId);
+      }
+    },
     reset() {
       mujoco.mj_resetData(model, data);
       mujoco.mj_forward(model, data);
