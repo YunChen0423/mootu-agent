@@ -647,7 +647,7 @@ function renderDecision(event, eventIndex, time) {
   const invitationId = invitedTarget ? `invite:${robotLine?.id || event.time}:${invitedTarget}` : null;
   const embodimentTarget = invitedTarget || currentSpeaker;
   const attentionMode = invitedTarget ? "invite" : "passive";
-  const shouldMoveForInvitation = invitedTarget ? (state.mujocoRuntime?.shouldMoveForInvite(invitedTarget, invitationId) ?? true) : false;
+  const shouldMoveForInvitation = invitedTarget ? (state.mujocoRuntime?.shouldMoveForInvite(invitedTarget) ?? true) : false;
   $("#robot").classList.toggle("intervening", intervening);
   orientRobotTo(embodimentTarget);
   const contextLines = state.session.transcript.filter((line) => line.start <= time && line.type === EVENT_TYPES.PARTICIPANT_UTTERANCE).slice(-6);

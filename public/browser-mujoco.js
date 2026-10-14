@@ -17,7 +17,7 @@ const INVITE_APPROACH_RATIO = 0.14;
 const NAVIGATION_DURATION = 3;
 const SPEAKER_NAVIGATION_DURATION = 1.8;
 const INVITATION_APPROACH_DURATION = 1.2;
-const INVITATION_HOLD_MS = 1800;
+const INVITATION_HOLD_MS = 2000;
 const INVITATION_RETURN_DURATION = 1.8;
 const INVITATION_COOLDOWN_MS = 10000;
 const MAX_INVITATION_ANIMATIONS = 2;
@@ -200,7 +200,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     navLast: null, navHeight: null, navKind: null, navDuration: null, votes: Array(6).fill(null), winner: null, round: 0,
     externalFocus: false, speaker: null, selectedPodNumber: null, attentionMode: null, action: null,
     activePods: [...POD_LAYOUTS[3]], speakerPodMap: new Map([["A", { pod: 1, number: 1 }], ["B", { pod: 5, number: 2 }], ["C", { pod: 0, number: 3 }]]),
-    votePlan: [], voteLabels: [], voteWinner: null, movedInviteTargets: new Set(), invitationCount: 0,
+    votePlan: [], voteLabels: [], voteWinner: null, approachedSpeakers: new Set(), invitationCount: 0,
     icebreakerTargetIndex: 0, pendingScenario: null, pendingAction: null,
     activeInvitationId: null, invitationCooldownUntil: 0
   };
@@ -268,7 +268,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
   const resetInvitationState = () => {
     demo.activeInvitationId = null;
     demo.invitationCooldownUntil = 0;
-    demo.movedInviteTargets.clear();
+    demo.approachedSpeakers.clear();
     demo.invitationCount = 0;
   };
   const setScenario = (mode, { force = false } = {}) => {
@@ -319,11 +319,12 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     if (!target) return false;
     const now = performance.now();
     const invitationKey = String(invitationId || speaker);
+    const approachKey = speaker;
     const invitationAllowed = attentionMode === "invite"
       && !invitationInProgress()
       && now >= demo.invitationCooldownUntil
       && demo.invitationCount < MAX_INVITATION_ANIMATIONS
-      && !demo.movedInviteTargets.has(invitationKey);
+      && !demo.approachedSpeakers.has(approachKey);
     const effectiveAttentionMode = invitationAllowed ? "invite" : attentionMode === "invite" ? "passive" : attentionMode;
     if (demo.externalFocus && demo.speaker === speaker && demo.attentionMode === effectiveAttentionMode && ["moving", "arrived", "listening", "turning"].includes(demo.navigation)) return true;
     demo.mode = "discussion";
@@ -340,7 +341,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     const [podX, podY] = PODS[target.pod];
     const targetYaw = Math.atan2(-podX, podY);
     if (shouldMoveForInvitation) {
-      demo.movedInviteTargets.add(invitationKey);
+      demo.approachedSpeakers.add(approachKey);
       demo.invitationCount += 1;
       demo.activeInvitationId = invitationKey;
       startBaseTransition(now, {
@@ -470,7 +471,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
       const speaker = demo.speaker || "参与者";
       label = demo.attentionMode === "addressing" ? "MooTu 正在说话 · 面向小组"
         : demo.attentionMode === "invite"
-        ? `邀请 ${speaker} 发言 · ${demo.navigation === "arrived" ? "短暂停留" : demo.navigation === "returning" ? "缓慢返回中心" : "轻微靠近一次"}`
+        ? `邀请 ${speaker} 发言 · ${demo.navigation === "arrived" ? "停留 2 秒" : demo.navigation === "returning" ? "缓慢返回中心" : "轻微靠近一次"}`
         : `${speaker} 正在发言 · 保持中心并头颈朝向`;
     } else {
       const counts = demo.voteLabels.map((_, index) => demo.votes.filter((vote) => vote === index).length);
@@ -696,12 +697,12 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     setAction,
     setScenario,
     configureParticipants,
-    shouldMoveForInvite(speaker, invitationId = null) {
-      const key = String(invitationId || speaker || "").trim();
+    shouldMoveForInvite(speaker) {
+      const key = String(speaker || "").trim();
       return !invitationInProgress()
         && performance.now() >= demo.invitationCooldownUntil
         && demo.invitationCount < MAX_INVITATION_ANIMATIONS
-        && !demo.movedInviteTargets.has(key);
+        && !demo.approachedSpeakers.has(key);
     },
     setVotingState({ candidates = [], records = [], winner = null } = {}) {
       demo.voteLabels = candidates.map((candidate) => String(candidate.label || candidate)).slice(0, 4);
