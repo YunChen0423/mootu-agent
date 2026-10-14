@@ -104,10 +104,10 @@ test("disabled analysis button keeps readable contrast", () => {
   assert.match(styles, /opacity:1/);
 });
 
-test("embodied scene supports five dynamic members and target-specific orientation", () => {
+test("embodied scene supports six dynamic members and target-specific orientation", () => {
   assert.match(html, /id="memberRing"/);
   assert.match(app, /const MEMBER_LAYOUTS/);
-  assert.match(app, /participants\.slice\(0, 5\)/);
+  assert.match(app, /participants\.slice\(0, 6\)/);
   assert.match(app, /Math\.atan2/);
   assert.match(app, /--focus-angle/);
   assert.match(app, /orient: `朝向 \$\{event\.target\}`/);
@@ -147,8 +147,18 @@ test("embodied output reproduces the interaction demo in browser MuJoCo", () => 
 test("the current transcript speaker drives MooTu toward the matching pod", () => {
   assert.match(app, /function syncMujocoSpeaker/);
   assert.match(app, /mujocoRuntime\?\.focusSpeaker\(line\.speaker\)/);
-  assert.match(browserMujoco, /SPEAKER_TO_POD = Object\.freeze\(\{ A: 1, B: 5, C: 0/);
+  assert.match(browserMujoco, /POD_LAYOUTS = Object\.freeze/);
   assert.match(browserMujoco, /const focusSpeaker = \(speakerId\)/);
   assert.match(browserMujoco, /SPEAKER_NAVIGATION_DURATION = 1\.2/);
-  assert.match(app, /A\/B\/C 对应现场 Pod/);
+  assert.match(app, /configureMujocoParticipants/);
+});
+
+test("uploaded speakers define the visible pod count and time zero has no metric state", () => {
+  assert.match(browserMujoco, /const configureParticipants = \(speakerIds\)/);
+  assert.match(browserMujoco, /podBaseGeomIds/);
+  assert.match(browserMujoco, /demo\.activePods\.includes\(index\)/);
+  assert.match(app, /speakers\.length} 位发言人/);
+  assert.match(app, /speakerCount > 6/);
+  assert.match(app, /hasDiscussionEvidence[\s\S]*clearMetric\("participation"/);
+  assert.match(app, /showTarget = activeIndex >= 0/);
 });

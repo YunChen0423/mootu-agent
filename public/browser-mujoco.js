@@ -17,7 +17,10 @@ const PODS = [
   [0, 0.040], [-0.046, 0.025], [-0.046, -0.025],
   [0, -0.040], [0.046, -0.025], [0.046, 0.025]
 ];
-const SPEAKER_TO_POD = Object.freeze({ A: 1, B: 5, C: 0, D: 2, E: 3, F: 4 });
+const POD_LAYOUTS = Object.freeze({
+  1: [0], 2: [1, 5], 3: [1, 5, 0], 4: [1, 5, 2, 4],
+  5: [1, 5, 2, 4, 0], 6: [0, 1, 2, 3, 4, 5]
+});
 
 const readString = (bytes) => new TextDecoder().decode(bytes);
 
@@ -152,6 +155,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
   const wheelDofs = ["wheel_FL_joint", "wheel_FR_joint"].map((name) => Number(model.jnt_dofadr[jointId(name)]));
   const wheelQpos = ["wheel_FL_joint", "wheel_FR_joint"].map((name) => Number(model.jnt_qposadr[jointId(name)]));
   const podGeomIds = Array.from({ length: 6 }, (_, index) => geomId(`pod_${index + 1}_light`));
+  const podBaseGeomIds = Array.from({ length: 6 }, (_, index) => geomId(`pod_${index + 1}_base`));
   const candidateGeomIds = [geomId("candidate_a"), geomId("candidate_b")];
   const exactVisuals = visualMeshes.map((asset) => {
     const geometry = exactGeometryFor(THREE, asset);
@@ -187,7 +191,8 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     mode: "icebreaker", phase: "intro", phaseStarted: performance.now(), selectedPod: null,
     navigation: null, arrivedAt: null, navStarted: null, navStart: null, navTarget: null,
     navLast: null, navHeight: null, votes: Array(6).fill(null), winner: null, round: 0,
-    externalFocus: false, speaker: null
+    externalFocus: false, speaker: null, selectedPodNumber: null,
+    activePods: [...POD_LAYOUTS[3]], speakerPodMap: new Map([["A", { pod: 1, number: 1 }], ["B", { pod: 5, number: 2 }], ["C", { pod: 0, number: 3 }]])
   };
   let frameId = 0;
 
@@ -230,6 +235,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     demo.phase = demo.mode === "icebreaker" ? "intro" : "open";
     demo.phaseStarted = now;
     demo.selectedPod = null;
+    demo.selectedPodNumber = null;
     demo.navigation = null;
     demo.arrivedAt = null;
     demo.votes.fill(null);
@@ -238,15 +244,27 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     demo.speaker = null;
     clearNavigation();
   };
+  const configureParticipants = (speakerIds) => {
+    const speakers = [...new Set((speakerIds || []).map((speaker) => String(speaker).trim()).filter(Boolean))].slice(0, 6);
+    const layout = POD_LAYOUTS[speakers.length] || [];
+    demo.activePods = [...layout];
+    demo.speakerPodMap = new Map(speakers.map((speaker, index) => [speaker, { pod: layout[index], number: index + 1 }]));
+    mujoco.mj_resetData(model, data);
+    mujoco.mj_forward(model, data);
+    settleSimulation();
+    setScenario("icebreaker");
+    return speakers.map((speaker, index) => ({ speaker, pod: index + 1 }));
+  };
   const focusSpeaker = (speakerId) => {
-    const speaker = String(speakerId || "").trim().toUpperCase();
-    const selectedPod = SPEAKER_TO_POD[speaker];
-    if (!Number.isInteger(selectedPod)) return false;
+    const speaker = String(speakerId || "").trim();
+    const target = demo.speakerPodMap.get(speaker);
+    if (!target) return false;
     if (demo.externalFocus && demo.speaker === speaker && ["moving", "arrived"].includes(demo.navigation)) return true;
     demo.mode = "icebreaker";
     demo.phase = "selected";
     demo.phaseStarted = performance.now();
-    demo.selectedPod = selectedPod;
+    demo.selectedPod = target.pod;
+    demo.selectedPodNumber = target.number;
     demo.navigation = "moving";
     demo.arrivedAt = null;
     demo.externalFocus = true;
@@ -266,7 +284,8 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
       } else if (demo.phase === "relay" && elapsed >= 5.4) {
         demo.phase = "selected";
         demo.phaseStarted = now;
-        demo.selectedPod = (demo.round * 2 + 1) % 6;
+        demo.selectedPod = demo.activePods[demo.round % demo.activePods.length];
+        demo.selectedPodNumber = demo.round % demo.activePods.length + 1;
         demo.round += 1;
         demo.navigation = "moving";
         clearNavigation();
@@ -280,14 +299,16 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
         demo.phase = "relay";
         demo.phaseStarted = now;
         demo.selectedPod = null;
+        demo.selectedPodNumber = null;
         demo.navigation = null;
         demo.externalFocus = false;
         demo.speaker = null;
         clearNavigation();
       }
     } else if (demo.phase === "open") {
-      const count = Math.min(6, Math.floor(elapsed / 0.75));
-      for (let index = 0; index < 6; index += 1) demo.votes[index] = index < count ? votePattern[index] : null;
+      const count = Math.min(demo.activePods.length, Math.floor(elapsed / 0.75));
+      demo.votes.fill(null);
+      demo.activePods.forEach((pod, index) => { demo.votes[pod] = index < count ? votePattern[index] : null; });
       if (elapsed >= 5.5) {
         demo.phase = "result";
         demo.phaseStarted = now;
@@ -306,29 +327,30 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     if (demo.mode === "icebreaker") {
       if (demo.phase === "intro") {
         const pulse = 0.5 + 0.5 * Math.sin(elapsed * Math.PI * 2);
-        for (let index = 0; index < 6; index += 1) colors[index] = [0.45 + 0.45 * pulse, 0.28 + 0.42 * pulse, 0.05, 1];
+        for (const index of demo.activePods) colors[index] = [0.45 + 0.45 * pulse, 0.28 + 0.42 * pulse, 0.05, 1];
       } else if (demo.phase === "relay") {
-        colors[Math.floor(elapsed / 0.30) % 6] = RELAY;
+        colors[demo.activePods[Math.floor(elapsed / 0.30) % demo.activePods.length]] = RELAY;
       } else if (demo.selectedPod !== null) {
         colors[demo.selectedPod] = SELECTED;
       }
       setColor(candidateGeomIds[0], [0.35, 0.22, 0.08, 1]);
       setColor(candidateGeomIds[1], [0.08, 0.22, 0.35, 1]);
     } else {
-      for (let index = 0; index < 6; index += 1) colors[index] = demo.votes[index] === "A" ? VOTE_A : demo.votes[index] === "B" ? VOTE_B : OFF;
+      for (const index of demo.activePods) colors[index] = demo.votes[index] === "A" ? VOTE_A : demo.votes[index] === "B" ? VOTE_B : OFF;
       setColor(candidateGeomIds[0], demo.phase === "result" && demo.winner === "A" ? SELECTED : VOTE_A);
       setColor(candidateGeomIds[1], demo.phase === "result" && demo.winner === "B" ? SELECTED : VOTE_B);
     }
-    podGeomIds.forEach((id, index) => setColor(id, colors[index]));
+    podGeomIds.forEach((id, index) => setColor(id, demo.activePods.includes(index) ? colors[index] : [0, 0, 0, 0]));
+    podBaseGeomIds.forEach((id, index) => setColor(id, demo.activePods.includes(index) ? [0.10, 0.10, 0.12, 1] : [0, 0, 0, 0]));
   };
   const reportDemoStatus = (now) => {
     const elapsed = (now - demo.phaseStarted) / 1000;
     let label;
     if (demo.mode === "icebreaker") {
       if (demo.phase === "intro") label = "破冰启动 · MooTu 发起互动";
-      else if (demo.phase === "relay") label = `灯光接力 · Pod ${Math.floor(elapsed / 0.30) % 6 + 1}`;
-      else if (demo.phase === "selected" && demo.externalFocus) label = `${demo.speaker} 正在发言 · ${demo.navigation === "arrived" ? `已到达 Pod ${demo.selectedPod + 1}` : `前往 Pod ${demo.selectedPod + 1}`}`;
-      else if (demo.phase === "selected") label = `选中 Pod ${demo.selectedPod + 1} · ${demo.navigation === "arrived" ? "邀请发言" : "靠近参与者"}`;
+      else if (demo.phase === "relay") label = `灯光接力 · Pod ${Math.floor(elapsed / 0.30) % demo.activePods.length + 1}`;
+      else if (demo.phase === "selected" && demo.externalFocus) label = `${demo.speaker} 正在发言 · ${demo.navigation === "arrived" ? `已到达 Pod ${demo.selectedPodNumber}` : `前往 Pod ${demo.selectedPodNumber}`}`;
+      else if (demo.phase === "selected") label = `选中 Pod ${demo.selectedPodNumber} · ${demo.navigation === "arrived" ? "邀请发言" : "靠近参与者"}`;
       else label = "返回中心";
     } else {
       const a = demo.votes.filter((vote) => vote === "A").length;
@@ -492,6 +514,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
   return {
     setAction,
     setScenario,
+    configureParticipants,
     focusSpeaker,
     reset() {
       mujoco.mj_resetData(model, data);

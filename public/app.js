@@ -18,7 +18,8 @@ const MEMBER_LAYOUTS = {
   2: [{ x: 12, y: 43 }, { x: 88, y: 43 }],
   3: [{ x: 12, y: 43 }, { x: 88, y: 43 }, { x: 86, y: 76 }],
   4: [{ x: 12, y: 42 }, { x: 88, y: 42 }, { x: 86, y: 76 }, { x: 14, y: 76 }],
-  5: [{ x: 10, y: 42 }, { x: 90, y: 42 }, { x: 88, y: 75 }, { x: 70, y: 91 }, { x: 30, y: 91 }]
+  5: [{ x: 10, y: 42 }, { x: 90, y: 42 }, { x: 88, y: 75 }, { x: 70, y: 91 }, { x: 30, y: 91 }],
+  6: [{ x: 10, y: 42 }, { x: 90, y: 42 }, { x: 90, y: 75 }, { x: 70, y: 91 }, { x: 30, y: 91 }, { x: 10, y: 75 }]
 };
 
 async function load() {
@@ -27,6 +28,7 @@ async function load() {
     fetch("/data/sample-session.json").then((r) => r.json()),
     fetch("/config/actions.json").then((r) => r.json())
   ]);
+  configureMujocoParticipants();
   const status = await fetch("/api/status").then((r) => r.json()).catch(() => ({ mode: "fallback" }));
   state.model = status.mode;
   $("#modelBadge").classList.toggle("fallback", status.mode !== "deepseek");
@@ -46,7 +48,7 @@ function renderStatic() {
 }
 
 function renderEmbodiedMembers() {
-  const participants = state.session.participants.slice(0, 5);
+  const participants = state.session.participants.slice(0, 6);
   const positions = MEMBER_LAYOUTS[participants.length] || MEMBER_LAYOUTS[5];
   $("#memberRing").innerHTML = participants.map((participant, index) => {
     const position = positions[index];
@@ -102,6 +104,13 @@ function syncMujocoSpeaker(time) {
   state.mujocoSpeakerKey = key;
   state.pendingMujocoSpeaker = line.speaker;
   state.mujocoRuntime?.focusSpeaker(line.speaker);
+}
+
+function configureMujocoParticipants() {
+  const speakers = state.session?.participants?.map((participant) => participant.id) || [];
+  if (!state.mujocoRuntime) return;
+  state.mujocoRuntime.configureParticipants(speakers);
+  if (speakers.length) setMujocoStatus("MooTu 互动演示在线运行", `${speakers.length} 位发言人 · ${speakers.length} 个 Pod 一一对应`, true);
 }
 
 function setTime(time) {
@@ -237,7 +246,7 @@ function parseTranscriptText(text) {
 function normalizeTranscript(data) {
   const lines = Array.isArray(data) ? data : data.transcript;
   if (!Array.isArray(lines) || !lines.length) throw new Error("没有识别到逐字稿内容");
-  return lines.map((line, index) => {
+  const normalized = lines.map((line, index) => {
     const start = Number(line.start);
     const end = Number(line.end ?? start + 8);
     const speaker = String(line.speaker ?? "").trim();
@@ -245,6 +254,9 @@ function normalizeTranscript(data) {
     if (!Number.isFinite(start) || !Number.isFinite(end) || !speaker || !text) throw new Error(`第 ${index + 1} 条格式不完整`);
     return { start, end, speaker, text };
   }).sort((a, b) => a.start - b.start);
+  const speakerCount = new Set(normalized.map((line) => line.speaker)).size;
+  if (speakerCount > 6) throw new Error(`检测到 ${speakerCount} 位发言人；当前 MuJoCo 场景最多支持 6 位`);
+  return normalized;
 }
 
 function loadImportedTranscript(lines, fileName) {
@@ -254,10 +266,13 @@ function loadImportedTranscript(lines, fileName) {
   state.session.participants = speakers.map((speaker, index) => ({ id: speaker, name: speaker, color: palette[index % palette.length] }));
   state.session.duration = Math.max(...lines.map((line) => line.end)) + 5;
   state.lastTranscriptKey = null;
+  state.mujocoSpeakerKey = null;
+  state.pendingMujocoSpeaker = null;
   state.utteranceCache.clear();
   state.utteranceRequests.clear();
   state.events = runAgent({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration, config: state.config }).events;
   renderStatic();
+  configureMujocoParticipants();
   setTime(0);
   toast(`已载入 ${fileName} · ${lines.length} 条发言`);
   if (state.model === "deepseek") void runFullAgentAnalysis({ automatic: true });
@@ -298,9 +313,9 @@ async function initBrowserMujoco() {
       canvas: $("#mujocoViewport"),
       onStatus: (label) => { $("#mujocoStrategy").textContent = label; }
     });
+    configureMujocoParticipants();
     if (state.pendingMujocoSpeaker) state.mujocoRuntime.focusSpeaker(state.pendingMujocoSpeaker);
     $("#mujocoScreen").classList.add("streaming");
-    setMujocoStatus("MooTu 互动演示在线运行", "Agent 发言人驱动 · A/B/C 对应现场 Pod", true);
   } catch (error) {
     setMujocoStatus("MuJoCo 加载失败", "请刷新页面或检查网络", false);
     console.error("MuJoCo WASM initialization failed", error);
@@ -390,10 +405,16 @@ function renderDecision(event, eventIndex, time) {
     : "单路径规则";
   renderToolTrace();
   $("#evidenceList").innerHTML = event.evidence.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
-  const hasDiscussionEvidence = event.time > 0;
-  setMetric("participation", event.metrics.participation, ["不开放", "偏不开放", "偏开放", "开放"], event.stage, hasDiscussionEvidence);
-  setMetric("diversity", event.metrics.diversity, ["收束", "偏收束", "偏发散", "发散"], event.stage, hasDiscussionEvidence);
-  setMetric("flow", event.metrics.flow, ["停滞", "偏停滞", "偏流动", "流动"], event.stage, hasDiscussionEvidence);
+  const hasDiscussionEvidence = state.session.transcript.some((line) => line.start <= time);
+  if (hasDiscussionEvidence) {
+    setMetric("participation", event.metrics.participation, ["不开放", "偏不开放", "偏开放", "开放"], event.stage);
+    setMetric("diversity", event.metrics.diversity, ["收束", "偏收束", "偏发散", "发散"], event.stage);
+    setMetric("flow", event.metrics.flow, ["停滞", "偏停滞", "偏流动", "流动"], event.stage);
+  } else {
+    clearMetric("participation", ["不开放", "偏不开放", "偏开放", "开放"]);
+    clearMetric("diversity", ["收束", "偏收束", "偏发散", "发散"]);
+    clearMetric("flow", ["停滞", "偏停滞", "偏流动", "流动"]);
+  }
   const nextTime = state.events[eventIndex + 1]?.time ?? state.session.duration;
   const phaseCount = intervening ? 4 : 2;
   const cyclePhase = Math.min(phaseCount - 1, Math.floor(clamp((time - event.time) / Math.max(nextTime - event.time, 1), 0, 0.999) * phaseCount));
@@ -419,16 +440,16 @@ function metricTarget(name, stage) {
   return 3;
 }
 
-function updateMetricGoal(name, activeIndex, stage, enableWarning = true) {
+function updateMetricGoal(name, activeIndex, stage, enableWarning = true, showTarget = true) {
   const targetIndex = metricTarget(name, stage);
   const row = $(`#${name}State`);
   const scale = $(`#${name}States`);
   const farFromTarget = enableWarning && activeIndex >= 0 && Math.abs(activeIndex - targetIndex) >= 2;
   row.classList.toggle("metric-warning", farFromTarget);
-  row.dataset.goal = stage === "converge" ? "收敛阶段目标" : "发散阶段目标";
+  row.dataset.goal = showTarget ? (stage === "converge" ? "收敛阶段目标" : "发散阶段目标") : "";
   [...scale.children].forEach((item, index) => {
-    item.classList.toggle("target", index === targetIndex);
-    item.title = index === targetIndex ? row.dataset.goal : "";
+    item.classList.toggle("target", showTarget && index === targetIndex);
+    item.title = showTarget && index === targetIndex ? row.dataset.goal : "";
   });
 }
 
@@ -451,17 +472,18 @@ function renderDecisionCycle(intervening, activeIndex) {
   steps.forEach((item, index) => item.classList.toggle("active", index === activeIndex));
 }
 
-function setMetricOptions(name, labels, activeIndex, stage = document.body.dataset.stage || "diverge") {
+function setMetricOptions(name, labels, activeIndex, stage = document.body.dataset.stage || "diverge", showTarget = activeIndex >= 0) {
   const scale = $(`#${name}States`);
   [...scale.children].forEach((item, index) => {
     item.textContent = labels[index];
     item.classList.toggle("active", index === activeIndex);
   });
-  updateMetricGoal(name, activeIndex, stage);
+  updateMetricGoal(name, activeIndex, stage, true, showTarget);
 }
 
 function clearMetric(name, labels, activeIndex = -1) {
-  setMetricOptions(name, labels, activeIndex);
+  $(`#${name}State`).removeAttribute("title");
+  setMetricOptions(name, labels, activeIndex, document.body.dataset.stage || "diverge", false);
 }
 
 function updateLiveConversationMetrics() {
