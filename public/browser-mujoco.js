@@ -13,7 +13,7 @@ const VOTE_COLORS = Object.freeze([
   [1, 0.55, 0.08, 1], [0.10, 0.62, 1, 1], [0.48, 0.82, 0.38, 1], [0.62, 0.42, 0.92, 1]
 ]);
 const APPROACH_DISTANCE = 0.020;
-const INVITE_APPROACH_RATIO = 0.14;
+const INVITE_APPROACH_RATIO = 0.18;
 const NAVIGATION_DURATION = 3;
 const SPEAKER_NAVIGATION_DURATION = 1.8;
 const INVITATION_APPROACH_DURATION = 1.2;
@@ -278,7 +278,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     }
     const now = performance.now();
     demo.mode = mode === "voting" ? "voting" : mode === "discussion" ? "discussion" : "icebreaker";
-    demo.phase = demo.mode === "icebreaker" ? "intro" : demo.mode === "voting" ? "open" : "listening";
+    demo.phase = demo.mode === "icebreaker" ? "intro" : demo.mode === "voting" ? "waiting" : "listening";
     demo.phaseStarted = now;
     demo.selectedPod = null;
     demo.selectedPodNumber = null;
@@ -477,7 +477,9 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
       const counts = demo.voteLabels.map((_, index) => demo.votes.filter((vote) => vote === index).length);
       const summary = demo.voteLabels.map((item, index) => `${String.fromCharCode(65 + index)} ${counts[index]}`).join(" / ");
       const winnerLabel = demo.voteWinner == null ? "等待有效投票" : (demo.voteLabels[demo.voteWinner] || `方案 ${String.fromCharCode(65 + demo.voteWinner)}`);
-      label = demo.phase === "open" ? `投票进行中${summary ? ` · ${summary}` : ""}` : `投票结果 · ${winnerLabel}`;
+      label = demo.phase === "waiting"
+        ? "投票 · 等待成员确认选择"
+        : demo.phase === "open" ? `投票进行中${summary ? ` · ${summary}` : ""}` : `投票结果 · ${winnerLabel}`;
     }
     onStatus?.(label);
   };
@@ -707,7 +709,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
         && demo.invitationCount < MAX_INVITATION_ANIMATIONS
         && !demo.approachedSpeakers.has(key);
     },
-    setVotingState({ candidates = [], records = [], winner = null } = {}) {
+    setVotingState({ candidates = [], records = [], winner = null, lightsReady = false } = {}) {
       demo.voteLabels = candidates.map((candidate) => String(candidate.label || candidate)).slice(0, 4);
       const candidateIndex = new Map(candidates.map((candidate, index) => [candidate.id, index]));
       const participantVotes = new Map(records.map((record) => [record.participantId, candidateIndex.get(record.candidateId)]));
@@ -717,6 +719,11 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
         demo.votePlan = demo.votePlan.map((_, participantIndex) => participantIndex < winner.count ? index : null);
       }
       demo.voteWinner = winner?.candidateId ? candidateIndex.get(winner.candidateId) ?? null : null;
+      if (lightsReady && demo.mode === "voting" && demo.phase === "waiting") {
+        demo.phase = "open";
+        demo.phaseStarted = performance.now();
+        demo.votes.fill(null);
+      }
     },
     focusSpeaker,
     setPlaying(active) {

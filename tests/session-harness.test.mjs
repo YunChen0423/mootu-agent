@@ -145,6 +145,19 @@ test("an explicit participant vote statement enters the voting workflow", () => 
   assert.equal(harness.blackboard.voteLedger.records[0].label, "收集后组合");
 });
 
+test("ballot Pod lights wait for a participant to say 我选好了", () => {
+  const harness = createSessionHarness({ transcript: [
+    { start: 1, end: 3, speaker: "A", text: "我们先讨论几个方向。" },
+    { start: 10, end: 12, speaker: "Core", text: "现在进入投票，请大家选择屏幕上的方案。" },
+    { start: 15, end: 17, speaker: "B", text: "我还在考虑。" },
+    { start: 20, end: 22, speaker: "C", text: "我选好了。" }
+  ] });
+  assert.equal(harness.setTime(16).phase, SESSION_PHASES.VOTING);
+  assert.equal(harness.blackboard.ballotLightsReady, false);
+  harness.setTime(20);
+  assert.equal(harness.blackboard.ballotLightsReady, true);
+});
+
 test("spoken voting waits for AI candidates instead of freezing transcript fragments", () => {
   const spokenVote = annotateTranscript([
     ...transcript.slice(0, 8),

@@ -158,17 +158,24 @@ function configureMujocoParticipants() {
 
 function syncMujocoPhase(blackboard) {
   renderMujocoCandidates(blackboard);
-  state.mujocoRuntime?.setVotingState({ candidates: blackboard.candidates?.items || [], records: blackboard.voteLedger?.records || [], winner: blackboard.voteLedger?.winner || null });
+  const votingState = {
+    candidates: blackboard.candidates?.items || [],
+    records: blackboard.voteLedger?.records || [],
+    winner: blackboard.voteLedger?.winner || null,
+    lightsReady: blackboard.ballotLightsReady
+  };
   const journeyKey = `${blackboard.phase}:${blackboard.discussionStage || "none"}`;
-  if (state.macroPhase === journeyKey) return;
-  state.macroPhase = journeyKey;
-  if (blackboard.phase === SESSION_PHASES.ICEBREAKER) {
-    state.mujocoRuntime?.setScenario("icebreaker");
+  if (state.macroPhase !== journeyKey) {
+    state.macroPhase = journeyKey;
+    if (blackboard.phase === SESSION_PHASES.ICEBREAKER) {
+      state.mujocoRuntime?.setScenario("icebreaker");
+    }
+    if ([SESSION_PHASES.DISCUSSION, SESSION_PHASES.BALLOT_PREPARATION].includes(blackboard.phase)) state.mujocoRuntime?.setScenario("discussion");
+    if ([SESSION_PHASES.VOTING, SESSION_PHASES.RESULT_CONFIRMATION, SESSION_PHASES.CLOSED].includes(blackboard.phase)) {
+      state.mujocoRuntime?.setScenario("voting");
+    }
   }
-  if ([SESSION_PHASES.DISCUSSION, SESSION_PHASES.BALLOT_PREPARATION].includes(blackboard.phase)) state.mujocoRuntime?.setScenario("discussion");
-  if ([SESSION_PHASES.VOTING, SESSION_PHASES.RESULT_CONFIRMATION, SESSION_PHASES.CLOSED].includes(blackboard.phase)) {
-    state.mujocoRuntime?.setScenario("voting");
-  }
+  state.mujocoRuntime?.setVotingState(votingState);
   if (!state.playing) renderMujocoPausedStatus(blackboard);
 }
 

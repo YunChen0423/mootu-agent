@@ -237,6 +237,9 @@ export class SessionHarness {
     const previousPhase = this.blackboard.phase;
     if (previousPhase && previousPhase !== phase) this.transitionHistory.push(Object.freeze({ from: previousPhase, to: phase, at: safeTime }));
     const currentEvent = [...this.eventLog].reverse().find((event) => event.start <= safeTime) || null;
+    const ballotLightsReady = this.eventLog.some((event) => event.start <= safeTime
+      && event.type === EVENT_TYPES.PARTICIPANT_UTTERANCE
+      && /我选好了/.test(event.text));
     const owner = ownerForPhase(phase);
     const liveCandidates = extractCandidates(this.eventLog, safeTime, this.candidateIdeas);
     const hasEnteredVoting = [SESSION_PHASES.VOTING, SESSION_PHASES.RESULT_CONFIRMATION, SESSION_PHASES.CLOSED].includes(phase);
@@ -256,6 +259,7 @@ export class SessionHarness {
       participants: this.participants,
       podMap: Object.freeze(this.participants.map((participant, index) => Object.freeze({ participantId: participant.id, podId: `pod-${index + 1}` }))),
       currentEvent,
+      ballotLightsReady,
       candidates,
       voteLedger: parseVoteLedger(this.eventLog, safeTime, candidates.items, this.participants),
       transitionHistory: Object.freeze([...this.transitionHistory])

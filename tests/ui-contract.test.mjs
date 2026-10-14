@@ -238,7 +238,9 @@ test("the current transcript speaker drives MooTu toward the matching pod", () =
 });
 
 test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry stable", () => {
-  assert.match(browserMujoco, /INVITE_APPROACH_RATIO = 0\.14/);
+  assert.match(browserMujoco, /INVITE_APPROACH_RATIO = 0\.18/);
+  assert.match(app, /lightsReady: blackboard\.ballotLightsReady/);
+  assert.match(browserMujoco, /demo\.phase === "waiting"/);
   assert.match(browserMujoco, /shouldMoveForInvitation \? "moving" : "turning"/);
   assert.match(browserMujoco, /approachedSpeakers/);
   assert.match(browserMujoco, /INVITATION_APPROACH_DURATION = 1\.2/);
