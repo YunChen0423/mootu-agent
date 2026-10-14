@@ -16,8 +16,9 @@ const APPROACH_DISTANCE = 0.020;
 const INVITE_APPROACH_RATIO = 0.14;
 const NAVIGATION_DURATION = 3;
 const SPEAKER_NAVIGATION_DURATION = 1.8;
-const INVITATION_HOLD_MS = 5400;
-const INVITATION_RETURN_DURATION = 3.2;
+const INVITATION_APPROACH_DURATION = 1.2;
+const INVITATION_HOLD_MS = 1800;
+const INVITATION_RETURN_DURATION = 1.8;
 const MAX_INVITATION_ANIMATIONS = 2;
 
 const PODS = [
@@ -323,7 +324,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
         x: podX * INVITE_APPROACH_RATIO,
         y: podY * INVITE_APPROACH_RATIO,
         yaw: targetYaw,
-        duration: SPEAKER_NAVIGATION_DURATION,
+        duration: INVITATION_APPROACH_DURATION,
         kind: "invite"
       });
     } else {
@@ -522,7 +523,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
         x: targetX,
         y: targetY,
         yaw: targetYaw,
-        duration: isDiscussionNavigation ? SPEAKER_NAVIGATION_DURATION : NAVIGATION_DURATION,
+        duration: isDiscussionNavigation ? INVITATION_APPROACH_DURATION : NAVIGATION_DURATION,
         kind: isDiscussionNavigation ? "invite" : demo.phase === "returning" ? "icebreaker-return" : "icebreaker-approach"
       });
     }
@@ -552,14 +553,16 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     mujoco.mj_forward(model, data);
     if (progress >= 1) {
       const completedKind = demo.navKind;
+      let resumeScenario = null;
+      let resumeAction = null;
       if (["invite", "icebreaker-approach"].includes(completedKind)) {
         demo.navigation = "arrived";
         demo.arrivedAt = now;
       } else if (completedKind === "icebreaker-return") {
         demo.navigation = "home";
       } else if (completedKind === "invite-return") {
-        const nextScenario = demo.pendingScenario;
-        const nextAction = demo.pendingAction;
+        resumeScenario = demo.pendingScenario;
+        resumeAction = demo.pendingAction;
         demo.pendingScenario = null;
         demo.pendingAction = null;
         demo.navigation = "home";
@@ -569,19 +572,18 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
         demo.externalFocus = false;
         demo.speaker = null;
         demo.attentionMode = null;
-        if (nextScenario) setScenario(nextScenario, { force: true });
-        else if (nextAction) setAction(nextAction, { force: true });
       } else if (completedKind === "passive") {
         demo.navigation = "listening";
         if (demo.pendingScenario) {
-          const nextScenario = demo.pendingScenario;
+          resumeScenario = demo.pendingScenario;
           demo.pendingScenario = null;
-          setScenario(nextScenario, { force: true });
         }
       } else {
         demo.navigation = "settled";
       }
       clearNavigation();
+      if (resumeScenario) setScenario(resumeScenario, { force: true });
+      else if (resumeAction) setAction(resumeAction, { force: true });
     }
   };
 

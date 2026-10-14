@@ -5,7 +5,7 @@ import { createSessionHarness, annotateTranscript, participantSpeakers, EVENT_TY
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const state = { session: null, config: null, events: [], sessionHarness: null, macroPhase: null, agentTrace: [], agentExecution: null, screenTopic: "", voteCandidates: [], time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, spokenUtteranceKeys: new Set(), agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoRuntime: null, pendingMujocoAction: null, mujocoCommandKey: null, speechTimer: null, lastSpeechText: "" };
+const state = { session: null, config: null, events: [], sessionHarness: null, macroPhase: null, agentTrace: [], agentExecution: null, screenTopic: "", voteCandidates: [], time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, activeSpeechKey: null, spokenUtteranceKeys: new Set(), agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoRuntime: null, pendingMujocoAction: null, mujocoCommandKey: null, speechTimer: null, lastSpeechText: "" };
 state.currentBlackboard = null;
 
 const formatTime = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
@@ -342,6 +342,7 @@ function enterLiveSession() {
   state.activeEventIndex = null;
   state.utteranceCache.clear();
   state.utteranceRequests.clear();
+  state.activeSpeechKey = null;
   state.spokenUtteranceKeys.clear();
   $("#transcriptTitle").textContent = "现场实时逐字稿";
   $("#transcriptHint").textContent = "实时识别 · 超出后自动上滚";
@@ -450,6 +451,7 @@ function loadImportedTranscript(lines, fileName) {
   state.screenTopic = "讨论主题提炼中";
   state.utteranceCache.clear();
   state.utteranceRequests.clear();
+  state.activeSpeechKey = null;
   state.spokenUtteranceKeys.clear();
   state.events = runAgent({ transcript: discussionTranscript(), participants: state.session.participants, duration: state.session.duration, discussionStart: state.sessionHarness.boundaries.discussion, config: state.config }).events;
   renderStatic();
@@ -479,13 +481,18 @@ function applyActionOutput(action, utterance, information = utterance, { showDis
   $("#agentSpeechText").textContent = utterance;
   if (!utterance) {
     clearTimeout(state.speechTimer);
+    state.activeSpeechKey = null;
     state.lastSpeechText = "";
     $("#agentSpeech").classList.remove("show");
   } else if (utterance !== state.lastSpeechText) {
     state.lastSpeechText = utterance;
     clearTimeout(state.speechTimer);
     $("#agentSpeech").classList.add("show");
-    state.speechTimer = setTimeout(() => $("#agentSpeech").classList.remove("show"), 2600);
+    state.speechTimer = setTimeout(() => {
+      $("#agentSpeech").classList.remove("show");
+      state.activeSpeechKey = null;
+      state.lastSpeechText = "";
+    }, 2600);
   }
   $("#coreActions").innerHTML = Object.entries(action).filter(([key]) => key !== "label" && (key !== "display" || showDisplay)).map(([key, value]) => `<div class="action" data-channel="${key}"><span>${channelLabel(key)}</span><strong>${escapeHtml(key === "display" ? information : value || "—")}</strong></div>`).join("");
 }
@@ -493,10 +500,11 @@ function applyActionOutput(action, utterance, information = utterance, { showDis
 function boundedRobotUtterance(key, utterance) {
   const value = String(utterance || "").trim();
   if (!value) return "";
-  if (state.spokenUtteranceKeys.has(key)) return value;
+  if (state.spokenUtteranceKeys.has(key)) return state.activeSpeechKey === key ? value : "";
   const limit = state.config?.thresholds?.max_robot_utterances || MAX_ROBOT_UTTERANCES;
   if (state.spokenUtteranceKeys.size >= limit) return "";
   state.spokenUtteranceKeys.add(key);
+  state.activeSpeechKey = key;
   return value;
 }
 

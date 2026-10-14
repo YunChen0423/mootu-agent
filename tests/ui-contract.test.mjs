@@ -241,14 +241,16 @@ test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry s
   assert.match(browserMujoco, /INVITE_APPROACH_RATIO = 0\.14/);
   assert.match(browserMujoco, /shouldMoveForInvitation \? "moving" : "turning"/);
   assert.match(browserMujoco, /movedInviteTargets/);
-  assert.match(browserMujoco, /INVITATION_HOLD_MS = 5400/);
+  assert.match(browserMujoco, /INVITATION_APPROACH_DURATION = 1\.2/);
+  assert.match(browserMujoco, /INVITATION_HOLD_MS = 1800/);
   assert.match(browserMujoco, /MAX_INVITATION_ANIMATIONS = 2/);
   assert.match(browserMujoco, /pendingScenario/);
   assert.match(browserMujoco, /pendingAction/);
   assert.match(browserMujoco, /invitationInProgress/);
   assert.match(browserMujoco, /setAction = \(action, \{ force = false \} = \{\}\)/);
   assert.match(browserMujoco, /kind: "invite-return"/);
-  assert.match(browserMujoco, /INVITATION_RETURN_DURATION = 3\.2/);
+  assert.match(browserMujoco, /INVITATION_RETURN_DURATION = 1\.8/);
+  assert.match(browserMujoco, /clearNavigation\(\);\s*if \(resumeScenario\)/);
   assert.match(browserMujoco, /邀请 \$\{speaker\} 发言/);
   assert.match(browserMujoco, /正在发言 · 保持中心并头颈朝向/);
   assert.match(browserMujoco, /kind: "passive"/);
@@ -263,7 +265,7 @@ test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry s
 });
 
 test("spoken overlays expire quickly and a real speaker overrides an old invitation target", () => {
-  assert.match(app, /setTimeout\(\(\) => \$\("#agentSpeech"\)\.classList\.remove\("show"\), 2600\)/);
+  assert.match(app, /state\.speechTimer = setTimeout\(\(\) => \{[\s\S]*?classList\.remove\("show"\);[\s\S]*?\}, 2600\)/);
   assert.match(app, /scriptedInvitedTarget \|\| \(currentSpeaker \? null : event\.target\)/);
 });
 
@@ -342,6 +344,8 @@ test("robot speech is globally bounded to five utterances", () => {
   assert.match(app, /MAX_ROBOT_UTTERANCES = 5/);
   assert.match(app, /function boundedRobotUtterance/);
   assert.match(app, /spokenUtteranceKeys\.size >= limit/);
+  assert.match(app, /activeSpeechKey === key \? value : ""/);
+  assert.match(app, /state\.activeSpeechKey = null/);
   assert.match(app, /spokenUtteranceKeys\.clear/);
 });
 
