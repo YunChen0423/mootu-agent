@@ -5,7 +5,7 @@ import { createSessionHarness, annotateTranscript, participantSpeakers, EVENT_TY
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const state = { session: null, config: null, events: [], sessionHarness: null, macroPhase: null, agentTrace: [], agentExecution: null, screenTopic: "", voteCandidates: [], time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoRuntime: null, pendingMujocoAction: null, mujocoCommandKey: null };
+const state = { session: null, config: null, events: [], sessionHarness: null, macroPhase: null, agentTrace: [], agentExecution: null, screenTopic: "", voteCandidates: [], time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoRuntime: null, pendingMujocoAction: null, mujocoCommandKey: null, speechTimer: null, lastSpeechText: "" };
 state.currentBlackboard = null;
 
 const formatTime = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
@@ -459,7 +459,16 @@ function renderParticipation(time) {
 
 function applyActionOutput(action, utterance, information = utterance, { showDisplay = false } = {}) {
   $("#agentSpeechText").textContent = utterance;
-  $("#agentSpeech").classList.toggle("show", Boolean(utterance));
+  if (!utterance) {
+    clearTimeout(state.speechTimer);
+    state.lastSpeechText = "";
+    $("#agentSpeech").classList.remove("show");
+  } else if (utterance !== state.lastSpeechText) {
+    state.lastSpeechText = utterance;
+    clearTimeout(state.speechTimer);
+    $("#agentSpeech").classList.add("show");
+    state.speechTimer = setTimeout(() => $("#agentSpeech").classList.remove("show"), 2600);
+  }
   $("#coreActions").innerHTML = Object.entries(action).filter(([key]) => key !== "label" && (key !== "display" || showDisplay)).map(([key, value]) => `<div class="action" data-channel="${key}"><span>${channelLabel(key)}</span><strong>${escapeHtml(key === "display" ? information : value || "—")}</strong></div>`).join("");
 }
 
@@ -596,7 +605,8 @@ function renderDecision(event, eventIndex, time) {
   const robotLine = activeLine?.type === EVENT_TYPES.ROBOT_UTTERANCE ? activeLine : null;
   const currentLine = robotLine ? null : participantAt(time);
   const currentSpeaker = currentLine?.speaker || null;
-  const invitedTarget = invitedParticipantFromLine(robotLine) || event.target || null;
+  const scriptedInvitedTarget = invitedParticipantFromLine(robotLine);
+  const invitedTarget = scriptedInvitedTarget || (currentSpeaker ? null : event.target) || null;
   const embodimentTarget = invitedTarget || currentSpeaker;
   const attentionMode = invitedTarget ? "invite" : "passive";
   const shouldMoveForInvitation = invitedTarget ? (state.mujocoRuntime?.shouldMoveForInvite(invitedTarget) ?? true) : false;

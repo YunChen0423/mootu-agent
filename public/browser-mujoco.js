@@ -16,6 +16,8 @@ const APPROACH_DISTANCE = 0.020;
 const INVITE_APPROACH_RATIO = 0.14;
 const NAVIGATION_DURATION = 3;
 const SPEAKER_NAVIGATION_DURATION = 1.8;
+const INVITATION_HOLD_MS = 1800;
+const INVITATION_RETURN_DURATION = 3.2;
 
 const PODS = [
   [0, 0.040], [-0.046, 0.025], [-0.046, -0.025],
@@ -310,7 +312,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
         kind: "invite"
       });
     } else {
-      startBaseTransition(now, { x: Number(data.qpos[freeQpos]), y: Number(data.qpos[freeQpos + 1]), yaw: targetYaw, duration: 1.35, kind: "passive" });
+      startBaseTransition(now, { x: 0, y: 0, yaw: targetYaw, duration: INVITATION_RETURN_DURATION, kind: "passive" });
     }
     if (!running) pausedAt = now;
     return true;
@@ -364,6 +366,10 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
         demo.speaker = null;
         clearNavigation();
       }
+    } else if (demo.mode === "discussion" && demo.attentionMode === "invite" && demo.navigation === "arrived" && now - demo.arrivedAt >= INVITATION_HOLD_MS) {
+      demo.navigation = "returning";
+      demo.arrivedAt = null;
+      startBaseTransition(now, { x: 0, y: 0, yaw: 0, duration: INVITATION_RETURN_DURATION, kind: "invite-return" });
     } else if (demo.mode === "voting" && demo.phase === "open") {
       const count = Math.min(demo.activePods.length, Math.floor(elapsed / 0.75));
       demo.votes.fill(null);
@@ -420,7 +426,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
       const speaker = demo.speaker || "参与者";
       label = demo.attentionMode === "addressing" ? "MooTu 正在说话 · 面向小组"
         : demo.attentionMode === "invite"
-        ? `邀请 ${speaker} 发言 · ${demo.navigation === "arrived" ? "已轻微移动并头颈朝向" : "轻微朝目标方向移动中"}`
+        ? `邀请 ${speaker} 发言 · ${demo.navigation === "arrived" ? "短暂停留" : demo.navigation === "returning" ? "缓慢返回中心" : "轻微靠近一次"}`
         : `${speaker} 正在发言 · 保持中心并头颈朝向`;
     } else {
       const counts = demo.voteLabels.map((_, index) => demo.votes.filter((vote) => vote === index).length);
@@ -528,6 +534,14 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
         demo.arrivedAt = now;
       } else if (completedKind === "icebreaker-return") {
         demo.navigation = "home";
+      } else if (completedKind === "invite-return") {
+        demo.navigation = "home";
+        demo.phase = "listening";
+        demo.selectedPod = null;
+        demo.selectedPodNumber = null;
+        demo.externalFocus = false;
+        demo.speaker = null;
+        demo.attentionMode = null;
       } else if (completedKind === "passive") {
         demo.navigation = "listening";
       } else {

@@ -241,6 +241,9 @@ test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry s
   assert.match(browserMujoco, /INVITE_APPROACH_RATIO = 0\.14/);
   assert.match(browserMujoco, /shouldMoveForInvitation \? "moving" : "turning"/);
   assert.match(browserMujoco, /movedInviteTargets/);
+  assert.match(browserMujoco, /INVITATION_HOLD_MS = 1800/);
+  assert.match(browserMujoco, /kind: "invite-return"/);
+  assert.match(browserMujoco, /INVITATION_RETURN_DURATION = 3\.2/);
   assert.match(browserMujoco, /邀请 \$\{speaker\} 发言/);
   assert.match(browserMujoco, /正在发言 · 保持中心并头颈朝向/);
   assert.match(browserMujoco, /kind: "passive"/);
@@ -252,6 +255,11 @@ test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry s
   assert.match(browserMujoco, /mesh\.userData\.geometryKey !== key/);
   assert.doesNotMatch(browserMujoco, /candidateGeomIds|candidate_a|candidate_b/);
   assert.match(app, /embodiment\.action/);
+});
+
+test("spoken overlays expire quickly and a real speaker overrides an old invitation target", () => {
+  assert.match(app, /setTimeout\(\(\) => \$\("#agentSpeech"\)\.classList\.remove\("show"\), 2600\)/);
+  assert.match(app, /scriptedInvitedTarget \|\| \(currentSpeaker \? null : event\.target\)/);
 });
 
 test("icebreaker animation runs once and then waits for discussion", () => {
@@ -276,7 +284,7 @@ test("AI topic stays internal until voting and scripted MooTu speech remains vis
   assert.match(app, /const normalizeScreenTopic/);
   assert.match(app, /result\.analysis\?\.screenTopic/);
   assert.match(app, /robotLine\?\.text \|\| contextualUtterance/);
-  assert.match(app, /invitedParticipantFromLine\(robotLine\) \|\| event\.target/);
+  assert.match(app, /scriptedInvitedTarget \|\| \(currentSpeaker \? null : event\.target\)/);
   assert.match(browserMujoco, /MooTu 正在说话 · 面向小组/);
 });
 

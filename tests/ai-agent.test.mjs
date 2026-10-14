@@ -150,7 +150,7 @@ test("convergence prompts are spaced and stop once the recent content has conver
   const raw = observations.map(({ time }) => ({ time, stage_recommendation: "converge", evidence: [], missing_evidence: [], candidates: [observe] }));
   const events = sanitizeEvents(raw, observations, [{ id: "A" }, { id: "B" }, { id: "C" }], config);
   const prompts = events.filter((event) => ["prepare_convergence", "advance_decision"].includes(event.strategy));
-  assert.ok(prompts.length <= 2);
+  assert.ok(prompts.length <= 1);
   assert.ok(prompts.every((event, index) => index === 0 || event.time - prompts[index - 1].time >= 30));
   assert.ok(events.filter((event) => event.time >= 220).every((event) => event.strategy !== "advance_decision"));
   assert.ok(events.filter((event) => event.time >= 220).every((event) => event.stageRecommendation === "converge"));
