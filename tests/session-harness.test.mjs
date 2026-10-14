@@ -75,3 +75,13 @@ test("candidate synthesis evolves in parallel with discussion without reading fu
   assert.ok(early.candidates.items.every((item) => item.label.length <= 8));
   assert.equal(early.candidates.items.some((item) => item.label.includes("真实声音")), false);
 });
+
+test("voting freezes one candidate snapshot through result confirmation", () => {
+  const harness = createSessionHarness({ transcript });
+  const voting = harness.setTime(904).candidates;
+  const result = harness.setTime(976).candidates;
+  const closed = harness.setTime(1023).candidates;
+  assert.strictEqual(result, voting);
+  assert.strictEqual(closed, voting);
+  assert.deepEqual(result.items.map((item) => item.label), voting.items.map((item) => item.label));
+});

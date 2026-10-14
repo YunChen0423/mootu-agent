@@ -1396,7 +1396,7 @@ body[data-stage="converge"] .pod-section .pod-row {
 
 .state-scale,
 body[data-stage="converge"] .state-scale {
-  gap: 12px;
+  gap: 4px;
   padding: 0;
   background: transparent !important;
 }
@@ -1404,22 +1404,16 @@ body[data-stage="converge"] .state-scale {
 .state-scale i.active,
 .state-scale i.target:not(.active) {
   position: relative;
-  padding: 5px 2px 7px;
-  border-radius: 0;
+  padding: 5px 3px;
+  border-radius: 7px;
   color: #aaa8a1;
   background: transparent;
   box-shadow: none;
 }
-.state-scale i.active { color: #292a2d; font-weight: 950; }
+.state-scale i.active { color: #292a2d; background: #ffdc6d; font-weight: 950; }
 .state-scale i.active::after {
-  content: "";
-  position: absolute;
-  right: 12%;
-  bottom: 1px;
-  left: 12%;
-  height: 3px;
-  border-radius: 3px;
-  background: var(--yellow);
+  display: none;
+  content: none;
 }
 .metric-row.metric-warning,
 body[data-stage="converge"] .metric-row.metric-warning {
@@ -1529,13 +1523,21 @@ body[data-stage="converge"] .metric-row.metric-warning {
 .reasoning-panel .metrics .metric-row {
   display: grid;
   grid-template-columns: minmax(76px, .72fr) minmax(0, 1.28fr);
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
   padding: 3px 2px;
 }
-.reasoning-panel .metric-row > span { padding: 2px 0; font-size: 9px; }
+.reasoning-panel .metric-row > span { padding: 4px 0; font-size: 11px; }
 .reasoning-panel .metric-row .state-scale { min-width: 0; gap: 2px; margin: 0; }
-.reasoning-panel .metric-row .state-scale i { min-width: 0; padding: 3px 1px 5px; font-size: 8px; white-space: nowrap; }
+.reasoning-panel .metric-row .state-scale i { min-width: 0; padding: 5px 2px; font-size: 10px; white-space: nowrap; }
 .reasoning-panel .metric-row.metric-warning,
 body[data-stage="converge"] .reasoning-panel .metric-row.metric-warning { padding: 4px 6px !important; }
 .reasoning-panel .metric-row.metric-warning > span::after { margin-left: 4px; font-size: 7px; }
+
+.pod-section.targeted .pod-row,
+body[data-stage="converge"] .pod-section.targeted .pod-row {
+  border-color: #e0a400;
+  background: #ffdf72;
+  box-shadow: 0 0 0 3px rgba(240,181,22,.16), 0 10px 26px rgba(159,113,0,.18);
+}
+.pod-section.targeted .pod-orb { animation: breathe 1.25s ease-in-out infinite; }

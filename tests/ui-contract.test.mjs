@@ -232,17 +232,27 @@ test("the current transcript speaker drives MooTu toward the matching pod", () =
 
 test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry stable", () => {
   assert.match(browserMujoco, /INVITE_APPROACH_RATIO = 0\.34/);
-  assert.match(browserMujoco, /attentionMode === "invite" \? "moving" : "listening"/);
+  assert.match(browserMujoco, /attentionMode === "invite" \? "moving" : "turning"/);
   assert.match(browserMujoco, /邀请 \$\{speaker\} 发言/);
   assert.match(browserMujoco, /正在发言 · 保持中心并头颈朝向/);
-  assert.match(browserMujoco, /if \(attentionMode !== "invite"\) centerRobot\(\)/);
-  assert.match(browserMujoco, /isDiscussionNavigation = [^;]*attentionMode === "invite"/);
-  assert.match(browserMujoco, /const centerRobot/);
-  assert.match(browserMujoco, /setScenario[\s\S]*centerRobot\(\)/);
+  assert.match(browserMujoco, /kind: "passive"/);
+  assert.match(browserMujoco, /targetYaw = Math\.atan2\(-podX, podY\)/);
+  assert.match(browserMujoco, /const startBaseTransition/);
+  assert.doesNotMatch(browserMujoco, /const centerRobot/);
+  assert.match(browserMujoco, /setScenario[\s\S]*startBaseTransition\(now/);
   assert.match(browserMujoco, /demo\.action\?\.posture\?\.includes\("前倾"\)/);
   assert.match(browserMujoco, /mesh\.userData\.geometryKey !== key/);
   assert.match(browserMujoco, /setColor\(candidateGeomIds\[0\], \[0, 0, 0, 0\]\)/);
   assert.match(app, /embodiment\.action/);
+});
+
+test("speaker and encouragement targets use distinct pod signals", () => {
+  assert.match(browserMujoco, /const SPEAKING = \[0\.32, 0\.74, 1, 1\]/);
+  assert.match(browserMujoco, /const INVITED = \[0\.18, 1, 0\.46, 1\]/);
+  assert.match(browserMujoco, /invitationPulse/);
+  assert.match(browserMujoco, /demo\.attentionMode === "invite" \? invitedColor : SPEAKING/);
+  assert.match(app, /classList\.toggle\("targeted", Boolean\(event\.target\)\)/);
+  assert.match(enhancements, /\.pod-section\.targeted \.pod-row/);
 });
 
 test("all orchestrators remain visible and the active owner is highlighted", () => {

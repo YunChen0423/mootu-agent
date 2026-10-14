@@ -137,6 +137,7 @@ export class SessionHarness {
     this.participants = Object.freeze(detected.map((id) => Object.freeze(supplied.get(id) || { id, name: id })));
     this.boundaries = buildBoundaries(this.eventLog);
     this.transitionHistory = [];
+    this.votingCandidates = null;
     this.blackboard = Object.freeze({});
     this.setTime(0, "diverge");
   }
@@ -148,7 +149,10 @@ export class SessionHarness {
     if (previousPhase && previousPhase !== phase) this.transitionHistory.push(Object.freeze({ from: previousPhase, to: phase, at: safeTime }));
     const currentEvent = [...this.eventLog].reverse().find((event) => event.start <= safeTime) || null;
     const owner = ownerForPhase(phase);
-    const candidates = extractCandidates(this.eventLog, safeTime);
+    const liveCandidates = extractCandidates(this.eventLog, safeTime);
+    const hasEnteredVoting = [SESSION_PHASES.VOTING, SESSION_PHASES.RESULT_CONFIRMATION, SESSION_PHASES.CLOSED].includes(phase);
+    if (hasEnteredVoting && !this.votingCandidates) this.votingCandidates = liveCandidates;
+    const candidates = hasEnteredVoting ? this.votingCandidates : liveCandidates;
     this.blackboard = Object.freeze({
       sessionTime: safeTime,
       phase,

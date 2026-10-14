@@ -255,6 +255,7 @@ function renderProtocolDecision(blackboard, fallbackEvent, eventIndex) {
   $("#podTarget").textContent = blackboard.activeWorkflow ? `${copy.owner} · ${blackboard.participants.length} 个 Pod` : "群体陪伴";
   $("#podActions").textContent = blackboard.activeWorkflow ? "流程受全局 Harness 校验" : "等待阶段事件";
   $("#podOrb").classList.toggle("active", Boolean(blackboard.activeWorkflow));
+  $(".pod-section").classList.remove("targeted");
   $("#jsonOutput").textContent = JSON.stringify({ runtime: { architecture: "session-harness", event_log_count: state.sessionHarness.eventLog.length }, blackboard, agent_view: state.sessionHarness.getAgentView(blackboard.activeAgent), fallback_discussion_event: fallbackEvent?.time, memory: { discussion_entries: eventIndex } }, null, 2);
 }
 
@@ -596,6 +597,7 @@ function renderDecision(event, eventIndex, time) {
   $("#podTarget").textContent = event.target ? `Pod ${event.target} · 个体鼓励` : "群体陪伴";
   $("#podActions").textContent = `${pod.temperature} · ${pod.vibration} · ${pod.breathing}`;
   $("#podOrb").classList.toggle("active", Boolean(event.target));
+  $(".pod-section").classList.toggle("targeted", Boolean(event.target));
   $("#jsonOutput").textContent = JSON.stringify({ timestamp: formatPresentationTime(event.time), source_timestamp: formatTime(event.time), playback_speed: timelineSpeed(), runtime: { architecture: "session-harness+pi", event_log_count: state.sessionHarness.eventLog.length, tool_trace: state.agentTrace, execution: state.agentExecution }, blackboard: state.sessionHarness.blackboard, agent_views: { discussion: state.sessionHarness.getAgentView("discussion_facilitator"), synthesis: state.sessionHarness.getAgentView("candidate_synthesis") }, stage: event.stage, stage_control: { recommendation: event.stageRecommendation, consecutive_votes: event.stageVotes }, observation: { evidence: event.evidence, missing_evidence: gaps }, assessment: event.metrics, decision: { source: event.decisionSource, intervene: intervening, strategy: event.strategy, target: event.target, reason: event.reason, confidence: event.confidence, expected_effect: event.expectedEffect, selection_margin: event.selectionMargin, candidate_evaluation: event.candidates }, memory: { previous_outcome: event.reflection, entries: eventIndex }, actions: { core: { ...renderedAction, display: information }, pod: event.target ? { target: event.target, ...pod } : pod }, follow_up: event.followUp }, null, 2);
 }
 

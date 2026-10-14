@@ -7,6 +7,8 @@ const NECK_SEGMENT_COUNT = 3;
 const OFF = [0.16, 0.16, 0.19, 1];
 const RELAY = [1, 0.88, 0.22, 1];
 const SELECTED = [0.20, 1, 0.42, 1];
+const SPEAKING = [0.32, 0.74, 1, 1];
+const INVITED = [0.18, 1, 0.46, 1];
 const VOTE_A = [1, 0.55, 0.08, 1];
 const VOTE_B = [0.10, 0.62, 1, 1];
 const APPROACH_DISTANCE = 0.020;
@@ -191,7 +193,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
   const demo = {
     mode: "icebreaker", phase: "intro", phaseStarted: performance.now(), selectedPod: null,
     navigation: null, arrivedAt: null, navStarted: null, navStart: null, navTarget: null,
-    navLast: null, navHeight: null, votes: Array(6).fill(null), winner: null, round: 0,
+    navLast: null, navHeight: null, navKind: null, navDuration: null, votes: Array(6).fill(null), winner: null, round: 0,
     externalFocus: false, speaker: null, selectedPodNumber: null, attentionMode: null, action: null,
     activePods: [...POD_LAYOUTS[3]], speakerPodMap: new Map([["A", { pod: 1, number: 1 }], ["B", { pod: 5, number: 2 }], ["C", { pod: 0, number: 3 }]])
   };
@@ -209,17 +211,6 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     setControl("wheel_FL", 0);
     setControl("wheel_FR", 0);
   };
-  const centerRobot = () => {
-    data.qpos[freeQpos] = 0;
-    data.qpos[freeQpos + 1] = 0;
-    data.qpos[freeQpos + 3] = 1;
-    data.qpos[freeQpos + 4] = 0;
-    data.qpos[freeQpos + 5] = 0;
-    data.qpos[freeQpos + 6] = 0;
-    wheelQpos.forEach((address) => { data.qpos[address] = 0; });
-    haltBaseMotion();
-    mujoco.mj_forward(model, data);
-  };
   const settleSimulation = () => {
     data.ctrl.fill(0);
     const settledAt = Number(data.time) + SETTLE_SECONDS;
@@ -234,6 +225,8 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     demo.navTarget = null;
     demo.navLast = null;
     demo.navHeight = null;
+    demo.navKind = null;
+    demo.navDuration = null;
   };
   const wrapAngle = (angle) => (angle + Math.PI) % (Math.PI * 2) - Math.PI;
   const baseYaw = () => {
@@ -243,6 +236,19 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     const z = Number(data.qpos[freeQpos + 6]);
     return Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
   };
+  const startBaseTransition = (now, { x = 0, y = 0, yaw = 0, duration = SPEAKER_NAVIGATION_DURATION, kind = "scenario" } = {}) => {
+    const startX = Number(data.qpos[freeQpos]);
+    const startY = Number(data.qpos[freeQpos + 1]);
+    const startYaw = baseYaw();
+    clearNavigation();
+    demo.navStarted = now;
+    demo.navStart = [startX, startY, startYaw];
+    demo.navTarget = [x, y, yaw];
+    demo.navLast = [...demo.navStart];
+    demo.navHeight = Number(data.qpos[freeQpos + 2]);
+    demo.navKind = kind;
+    demo.navDuration = duration;
+  };
   const setScenario = (mode) => {
     const now = performance.now();
     demo.mode = mode === "voting" ? "voting" : mode === "discussion" ? "discussion" : "icebreaker";
@@ -250,7 +256,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     demo.phaseStarted = now;
     demo.selectedPod = null;
     demo.selectedPodNumber = null;
-    demo.navigation = null;
+    demo.navigation = "settling";
     demo.arrivedAt = null;
     demo.votes.fill(null);
     demo.winner = null;
@@ -258,8 +264,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     demo.speaker = null;
     demo.attentionMode = null;
     demo.action = null;
-    clearNavigation();
-    centerRobot();
+    startBaseTransition(now, { x: 0, y: 0, yaw: 0, duration: 0.9, kind: "scenario" });
     if (!running) pausedAt = now;
   };
   const configureParticipants = (speakerIds) => {
@@ -284,13 +289,24 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     demo.phaseStarted = now;
     demo.selectedPod = target.pod;
     demo.selectedPodNumber = target.number;
-    demo.navigation = attentionMode === "invite" ? "moving" : "listening";
+    demo.navigation = attentionMode === "invite" ? "moving" : "turning";
     demo.arrivedAt = null;
     demo.externalFocus = true;
     demo.speaker = speaker;
     demo.attentionMode = attentionMode;
-    clearNavigation();
-    if (attentionMode !== "invite") centerRobot();
+    const [podX, podY] = PODS[target.pod];
+    const targetYaw = Math.atan2(-podX, podY);
+    if (attentionMode === "invite") {
+      startBaseTransition(now, {
+        x: podX * INVITE_APPROACH_RATIO,
+        y: podY * INVITE_APPROACH_RATIO,
+        yaw: targetYaw,
+        duration: SPEAKER_NAVIGATION_DURATION,
+        kind: "invite"
+      });
+    } else {
+      startBaseTransition(now, { x: 0, y: 0, yaw: targetYaw, duration: 0.72, kind: "passive" });
+    }
     if (!running) pausedAt = now;
     return true;
   };
@@ -360,7 +376,13 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
       setColor(candidateGeomIds[0], [0, 0, 0, 0]);
       setColor(candidateGeomIds[1], [0, 0, 0, 0]);
     } else if (demo.mode === "discussion") {
-      for (const index of demo.activePods) colors[index] = index === demo.selectedPod ? [0.32, 0.74, 1, 1] : OFF;
+      const invitationPulse = 0.58 + 0.42 * Math.sin(elapsed * Math.PI * 3);
+      const invitedColor = [INVITED[0] * invitationPulse, INVITED[1] * invitationPulse, INVITED[2] * invitationPulse, 1];
+      for (const index of demo.activePods) {
+        colors[index] = index === demo.selectedPod
+          ? demo.attentionMode === "invite" ? invitedColor : SPEAKING
+          : OFF;
+      }
       setColor(candidateGeomIds[0], [0, 0, 0, 0]);
       setColor(candidateGeomIds[1], [0, 0, 0, 0]);
     } else {
@@ -399,7 +421,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
       const [tx, ty] = PODS[demo.selectedPod];
       const dx = tx - Number(data.qpos[freeQpos]);
       const dy = ty - Number(data.qpos[freeQpos + 1]);
-      const relativeYaw = Math.max(-0.52, Math.min(0.52, wrapAngle(Math.atan2(-dx, dy) - baseYaw())));
+      const relativeYaw = Math.max(-0.61, Math.min(0.61, wrapAngle(Math.atan2(-dx, dy) - baseYaw())));
       headYaw = relativeYaw * 0.68;
       neckSide = relativeYaw * 0.32;
       neckPitch = demo.action?.posture?.includes("前倾") ? 0.12 : 0.07;
@@ -432,7 +454,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
   const applyScriptedNavigation = (now) => {
     const isIcebreakerNavigation = demo.mode === "icebreaker" && ["selected", "returning"].includes(demo.phase);
     const isDiscussionNavigation = demo.mode === "discussion" && demo.phase === "attention" && demo.attentionMode === "invite";
-    if (!isIcebreakerNavigation && !isDiscussionNavigation) return;
+    if (!demo.navStart && !isIcebreakerNavigation && !isDiscussionNavigation) return;
     if (!demo.navStart) {
       const startX = Number(data.qpos[freeQpos]);
       const startY = Number(data.qpos[freeQpos + 1]);
@@ -450,13 +472,15 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
           targetY = podY - Math.cos(targetYaw) * APPROACH_DISTANCE;
         }
       }
-      demo.navStarted = now;
-      demo.navStart = [startX, startY, startYaw];
-      demo.navTarget = [targetX, targetY, targetYaw];
-      demo.navLast = [...demo.navStart];
-      demo.navHeight = Number(data.qpos[freeQpos + 2]);
+      startBaseTransition(now, {
+        x: targetX,
+        y: targetY,
+        yaw: targetYaw,
+        duration: isDiscussionNavigation ? SPEAKER_NAVIGATION_DURATION : NAVIGATION_DURATION,
+        kind: isDiscussionNavigation ? "invite" : demo.phase === "returning" ? "icebreaker-return" : "icebreaker-approach"
+      });
     }
-    const duration = demo.mode === "discussion" || demo.externalFocus ? SPEAKER_NAVIGATION_DURATION : NAVIGATION_DURATION;
+    const duration = demo.navDuration || NAVIGATION_DURATION;
     const progress = Math.min(1, (now - demo.navStarted) / (duration * 1000));
     const eased = smoothstep(progress);
     const [startX, startY, startYaw] = demo.navStart;
@@ -481,12 +505,18 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     demo.navLast = [x, y, yaw];
     mujoco.mj_forward(model, data);
     if (progress >= 1) {
-      if (demo.phase === "selected" || isDiscussionNavigation) {
+      const completedKind = demo.navKind;
+      if (["invite", "icebreaker-approach"].includes(completedKind)) {
         demo.navigation = "arrived";
         demo.arrivedAt = now;
-      } else {
+      } else if (completedKind === "icebreaker-return") {
         demo.navigation = "home";
+      } else if (completedKind === "passive") {
+        demo.navigation = "listening";
+      } else {
+        demo.navigation = "settled";
       }
+      clearNavigation();
     }
   };
 
