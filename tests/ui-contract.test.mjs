@@ -243,6 +243,8 @@ test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry s
   assert.match(browserMujoco, /approachedSpeakers/);
   assert.match(browserMujoco, /INVITATION_APPROACH_DURATION = 1\.2/);
   assert.match(browserMujoco, /INVITATION_HOLD_MS = 2000/);
+  assert.match(browserMujoco, /demo\.navigation === "moving"/);
+  assert.doesNotMatch(browserMujoco, /const isDiscussionNavigation = demo\.mode === "discussion" && demo\.phase === "attention" && demo\.attentionMode === "invite"/);
   assert.match(browserMujoco, /const approachKey = speaker/);
   assert.match(browserMujoco, /approachedSpeakers\.has\(approachKey\)/);
   assert.match(browserMujoco, /停留 2 秒/);

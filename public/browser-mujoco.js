@@ -521,17 +521,20 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
   };
   const applyScriptedNavigation = (now) => {
     const isIcebreakerNavigation = demo.mode === "icebreaker" && ["selected", "returning"].includes(demo.phase);
-    const isDiscussionNavigation = demo.mode === "discussion" && demo.phase === "attention" && demo.attentionMode === "invite";
-    if (!demo.navStart && !isIcebreakerNavigation && !isDiscussionNavigation) return;
+    const isDiscussionApproach = demo.mode === "discussion"
+      && demo.phase === "attention"
+      && demo.attentionMode === "invite"
+      && demo.navigation === "moving";
+    if (!demo.navStart && !isIcebreakerNavigation && !isDiscussionApproach) return;
     if (!demo.navStart) {
       const startX = Number(data.qpos[freeQpos]);
       const startY = Number(data.qpos[freeQpos + 1]);
       const startYaw = baseYaw();
       let targetX = 0, targetY = 0, targetYaw = 0;
-      if (demo.phase === "selected" || isDiscussionNavigation) {
+      if (demo.phase === "selected" || isDiscussionApproach) {
         const [podX, podY] = PODS[demo.selectedPod];
         targetYaw = Math.atan2(-(podX - startX), podY - startY);
-        if (isDiscussionNavigation) {
+        if (isDiscussionApproach) {
           const ratio = INVITE_APPROACH_RATIO;
           targetX = startX + (podX - startX) * ratio;
           targetY = startY + (podY - startY) * ratio;
@@ -544,8 +547,8 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
         x: targetX,
         y: targetY,
         yaw: targetYaw,
-        duration: isDiscussionNavigation ? INVITATION_APPROACH_DURATION : NAVIGATION_DURATION,
-        kind: isDiscussionNavigation ? "invite" : demo.phase === "returning" ? "icebreaker-return" : "icebreaker-approach"
+        duration: isDiscussionApproach ? INVITATION_APPROACH_DURATION : NAVIGATION_DURATION,
+        kind: isDiscussionApproach ? "invite" : demo.phase === "returning" ? "icebreaker-return" : "icebreaker-approach"
       });
     }
     const duration = demo.navDuration || NAVIGATION_DURATION;
