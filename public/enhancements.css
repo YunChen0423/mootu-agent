@@ -1505,8 +1505,23 @@ body[data-stage="converge"] .metric-row.metric-warning {
 }
 .mujoco-candidates small { display: block; margin-bottom: 6px; color: #ffcf4d; font-size: 8px; font-weight: 900; }
 .mujoco-candidates div { display: grid; gap: 4px; }
-.mujoco-candidates span { overflow: hidden; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
-.mujoco-candidates b { display: inline-grid; place-items: center; width: 15px; height: 15px; margin-right: 5px; border-radius: 4px; color: #222; background: #ffcf4d; }
+.mujoco-candidates span { display: grid; grid-template-columns: 15px minmax(0,1fr) auto; align-items: center; gap: 5px; overflow: hidden; font-size: 8px; white-space: nowrap; }
+.mujoco-candidates span i { overflow: hidden; font-style: normal; text-overflow: ellipsis; }
+.mujoco-candidates span em { color: #fff; font-style: normal; font-weight: 900; }
+.mujoco-candidates b { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 4px; color: #fff; background: var(--vote-color, #ffcf4d); }
+.mujoco-candidates.result { border-color: rgba(255,207,77,.72); background: rgba(27,28,31,.93); }
+.mujoco-candidates.result span.winner { padding: 3px 4px; border-radius: 6px; background: rgba(255,207,77,.16); }
+.agent-details-button { padding: 5px 8px; font-size: 10px; }
+.agent-details-dialog { width: min(880px, calc(100vw - 36px)); max-height: min(760px, calc(100vh - 36px)); }
+.agent-details-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; padding: 2px 2px 12px; }
+.agent-details-grid section { padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); }
+.agent-details-grid section > span { color: #a77700; font-size: 9px; font-weight: 950; letter-spacing: .06em; }
+.agent-details-grid h3 { margin: 5px 0 7px; font-size: 14px; }
+.agent-details-grid p, .agent-details-grid li { color: #65676c; font-size: 11px; line-height: 1.65; }
+.agent-details-grid p, .agent-details-grid ul { margin: 0; }
+.agent-details-grid ul { padding-left: 17px; }
+.agent-details-wide { grid-column: 1 / -1; }
+@media (max-width: 720px) { .agent-details-grid { grid-template-columns: 1fr; } .agent-details-wide { grid-column: auto; } }
 
 @media (min-width: 1051px) {
   .reasoning-panel .stage-criteria { grid-column: 2; grid-row: 3; }

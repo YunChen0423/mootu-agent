@@ -106,6 +106,17 @@ test("Core voting prompts enter the voting workflow immediately", () => {
   assert.equal(harness.blackboard.activeWorkflow, "voting");
 });
 
+test("Core announcing independent Pod ballots enters voting on the same utterance", () => {
+  const corePrompt = annotateTranscript([
+    { start: 0, end: 8, speaker: "A", text: "我们已经比较完三个方向。" },
+    { start: 20, end: 28, speaker: "Core", text: "三个候选方案已列好，现在各自用Pod独立投票，先不公开。" }
+  ]);
+  const harness = createSessionHarness({ transcript: corePrompt, candidateIdeas: ["感官集章", "声音合成", "秘密任务"] });
+  assert.equal(harness.setTime(19, "converge").phase, SESSION_PHASES.DISCUSSION);
+  assert.equal(harness.setTime(20, "converge").phase, SESSION_PHASES.VOTING);
+  assert.equal(harness.blackboard.activeWorkflow, "voting");
+});
+
 test("an explicit participant vote statement enters the voting workflow", () => {
   const spokenVote = annotateTranscript([
     ...transcript.slice(0, 8),

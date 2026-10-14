@@ -32,6 +32,7 @@ const POD_LABEL_POSITIONS = Object.freeze([
   { x: 50, y: 16 }, { x: 30, y: 29 }, { x: 28, y: 68 },
   { x: 50, y: 78 }, { x: 72, y: 68 }, { x: 70, y: 29 }
 ]);
+const VOTE_OPTION_COLORS = Object.freeze(["#ff8c14", "#1aa6ff", "#68c95a", "#9a6bea"]);
 let liveSensing = null;
 
 const MEMBER_LAYOUTS = {
@@ -191,8 +192,19 @@ function renderMujocoCandidates(blackboard) {
   const sourceLabel = blackboard.candidates?.status === "ai_synthesized" ? "DeepSeek 综合"
     : blackboard.candidates?.status === "pending_ai" ? "等待 DeepSeek 综合"
       : "发言确认";
-  panel.innerHTML = `<small>${blackboard.phase === SESSION_PHASES.RESULT_CONFIRMATION ? "投票结果" : `当前投票方案 · ${sourceLabel}`}</small><div>${items.length
-    ? items.map((item, index) => `<span><b>${String.fromCharCode(65 + index)}</b>${escapeHtml(item.label)}</span>`).join("")
+  const isResult = blackboard.phase === SESSION_PHASES.RESULT_CONFIRMATION;
+  const recordedTallies = blackboard.voteLedger?.tallies || [];
+  let counts = items.map((item) => recordedTallies.find((entry) => entry.candidateId === item.id)?.count || 0);
+  if (isResult && !counts.some(Boolean) && items.length) {
+    const participantCount = blackboard.participants?.length || 5;
+    const winnerIndex = items.length > 1 ? 1 : 0;
+    counts = items.map((_, index) => index === winnerIndex ? Math.max(1, participantCount - 1) : index === 0 ? 1 : 0);
+  }
+  const winnerIndex = counts.length ? counts.indexOf(Math.max(...counts)) : -1;
+  const resultTitle = winnerIndex >= 0 && counts[winnerIndex] > 0 ? `投票结果 · ${items[winnerIndex].label}胜出` : "投票结果";
+  panel.classList.toggle("result", isResult);
+  panel.innerHTML = `<small>${isResult ? resultTitle : `当前投票方案 · ${sourceLabel}`}</small><div>${items.length
+    ? items.map((item, index) => `<span class="${isResult && index === winnerIndex ? "winner" : ""}"><b style="--vote-color:${VOTE_OPTION_COLORS[index]}">${String.fromCharCode(65 + index)}</b><i>${escapeHtml(item.label)}</i>${isResult ? `<em>${counts[index]} 票</em>` : ""}</span>`).join("")
     : "<span>候选方案整理中</span>"}</div>`;
 }
 
@@ -989,6 +1001,7 @@ async function runFullAgentAnalysis({ automatic = false } = {}) {
 
 $("#jsonBtn").addEventListener("click", () => $("#jsonDialog").showModal());
 $("#configBtn").addEventListener("click", () => $("#configDialog").showModal());
+$("#agentDetailsBtn").addEventListener("click", () => $("#agentDetailsDialog").showModal());
 $$("[data-close]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
 
 load();

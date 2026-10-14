@@ -241,7 +241,9 @@ test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry s
   assert.match(browserMujoco, /INVITE_APPROACH_RATIO = 0\.14/);
   assert.match(browserMujoco, /shouldMoveForInvitation \? "moving" : "turning"/);
   assert.match(browserMujoco, /movedInviteTargets/);
-  assert.match(browserMujoco, /INVITATION_HOLD_MS = 1800/);
+  assert.match(browserMujoco, /INVITATION_HOLD_MS = 5400/);
+  assert.match(browserMujoco, /pendingScenario/);
+  assert.match(browserMujoco, /invitationInProgress/);
   assert.match(browserMujoco, /kind: "invite-return"/);
   assert.match(browserMujoco, /INVITATION_RETURN_DURATION = 3\.2/);
   assert.match(browserMujoco, /邀请 \$\{speaker\} 发言/);
@@ -311,8 +313,22 @@ test("MuJoCo overlays participant labels, speech, and voting candidates", () => 
   assert.match(app, /发言确认/);
   assert.match(enhancements, /\.mujoco-participant-labels span/);
   assert.match(enhancements, /\.mujoco-candidates/);
+  assert.match(app, /VOTE_OPTION_COLORS/);
+  assert.match(app, /投票结果 · \$\{items\[winnerIndex\]\.label\}胜出/);
+  assert.match(app, /\$\{counts\[index\]\} 票/);
+  assert.match(enhancements, /--vote-color/);
   assert.match(app, /function renderMujocoPausedStatus/);
   assert.match(app, /讨论 · \$\{blackboard\.discussionStage/);
+});
+
+test("agent judgment exposes the full orchestration design on demand", () => {
+  assert.match(html, /id="agentDetailsBtn"[^>]*>查看详情/);
+  assert.match(html, /id="agentDetailsDialog"/);
+  assert.match(html, /路由与切换/);
+  assert.match(html, /输入与输出/);
+  assert.match(html, /Tools 与 Skills/);
+  assert.match(html, /事件日志、共享黑板与局部工作记忆/);
+  assert.match(app, /agentDetailsDialog"\)\.showModal/);
 });
 
 test("stage-switch evidence is shown compactly during discussion", () => {
