@@ -13,7 +13,7 @@
     "build:static": "node build.mjs",
     "mujoco:bridge": "node bridge/launch.mjs",
     "mujoco:validate": "node bridge/launch.mjs --validate",
-    "check": "node --check server.mjs && node --check ai-agent.mjs && node --check agent/policy.mjs && node --check agent/tools.mjs && node --check agent/pi-runtime.mjs && node --check build-worker.mjs && node --check public/app.js && node --check public/browser-mujoco.js && node --check public/agent-engine.js && node --check public/live-sensing.js && node --check build.mjs",
+    "check": "node --check server.mjs && node --check ai-agent.mjs && node --check agent/policy.mjs && node --check agent/tools.mjs && node --check agent/pi-runtime.mjs && node --check agent/session-router.mjs && node --check agent/workflows.mjs && node --check agent/skills.mjs && node --check agent/memory.mjs && node --check build-worker.mjs && node --check public/app.js && node --check public/session-harness.js && node --check public/browser-mujoco.js && node --check public/agent-engine.js && node --check public/live-sensing.js && node --check build.mjs",
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {

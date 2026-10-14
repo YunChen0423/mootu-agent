@@ -1,16 +1,18 @@
 import { generateContextualUtterance, runAgent } from "./agent-engine.js";
 import { createLiveSensing } from "./live-sensing.js";
 import { createBrowserMujoco } from "./browser-mujoco.js";
+import { createSessionHarness, annotateTranscript, participantSpeakers, EVENT_TYPES, SESSION_PHASES } from "./session-harness.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const state = { session: null, config: null, events: [], agentTrace: [], agentExecution: null, time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoRuntime: null, pendingMujocoAction: null, mujocoCommandKey: null, pendingMujocoSpeaker: null, mujocoSpeakerKey: null };
+const state = { session: null, config: null, events: [], sessionHarness: null, macroPhase: null, agentTrace: [], agentExecution: null, time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoRuntime: null, pendingMujocoAction: null, mujocoCommandKey: null, pendingMujocoSpeaker: null, mujocoSpeakerKey: null };
 
 const formatTime = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character]);
 const timelineSpeed = () => state.config?.display?.timeline_speed_multiplier ?? 1;
 const formatPresentationTime = (seconds) => formatTime(seconds / timelineSpeed());
+const discussionTranscript = () => state.session.transcript.filter((line) => line.type === EVENT_TYPES.PARTICIPANT_UTTERANCE);
 let liveSensing = null;
 
 const MEMBER_LAYOUTS = {
@@ -28,12 +30,14 @@ async function load() {
     fetch("/data/sample-session.json").then((r) => r.json()),
     fetch("/config/actions.json").then((r) => r.json())
   ]);
+  state.session.transcript = annotateTranscript(state.session.transcript);
+  state.sessionHarness = createSessionHarness(state.session);
   configureMujocoParticipants();
   const status = await fetch("/api/status").then((r) => r.json()).catch(() => ({ mode: "fallback" }));
   state.model = status.mode;
   $("#modelBadge").classList.toggle("fallback", status.mode !== "deepseek");
   $("#modelBadge").innerHTML = `<i></i>${status.mode === "deepseek" ? `DeepSeek AI Agent · 已连接` : "AI 未配置 · 安全回退"}`;
-  state.events = runAgent({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration, config: state.config }).events;
+  state.events = runAgent({ transcript: discussionTranscript(), participants: state.session.participants, duration: state.session.duration, config: state.config }).events;
   renderStatic();
   setTime(0);
   if (state.model === "deepseek") void runFullAgentAnalysis({ automatic: true });
@@ -98,7 +102,7 @@ function transcriptAt(time) {
 
 function syncMujocoSpeaker(time) {
   const line = transcriptAt(time);
-  if (!line?.speaker) return;
+  if (!line?.speaker || line.type !== EVENT_TYPES.PARTICIPANT_UTTERANCE) return;
   const key = `${line.speaker}:${line.start}`;
   if (key === state.mujocoSpeakerKey) return;
   state.mujocoSpeakerKey = key;
@@ -113,25 +117,92 @@ function configureMujocoParticipants() {
   if (speakers.length) setMujocoStatus("MooTu 互动演示在线运行", `${speakers.length} 位发言人 · ${speakers.length} 个 Pod 一一对应`, true);
 }
 
+function macroStageFor(blackboard, discussionStage) {
+  if ([SESSION_PHASES.WAITING, SESSION_PHASES.ICEBREAKER].includes(blackboard.phase)) return "icebreaker";
+  if (blackboard.phase === SESSION_PHASES.DISCUSSION) return discussionStage === "converge" ? "converge" : "diverge";
+  return "voting";
+}
+
+function macroStageCopy(stage) {
+  return ({
+    icebreaker: { title: "破冰启动", reason: "通过击鼓传花建立安全、清晰的第一轮参与。" },
+    diverge: { title: "发散探索", reason: "扩大参与和想法空间，暂不急于形成结论。" },
+    converge: { title: "收敛决策", reason: "比较候选方向、明确取舍，并逐步形成可执行结论。" },
+    voting: { title: "投票确认", reason: "冻结候选版本、收集 Pod 投票并确认最终结果。" }
+  })[stage];
+}
+
+function syncMujocoPhase(blackboard) {
+  if (state.macroPhase === blackboard.phase) return;
+  state.macroPhase = blackboard.phase;
+  if (blackboard.phase === SESSION_PHASES.ICEBREAKER) {
+    state.mujocoRuntime?.setScenario("icebreaker");
+    $("#mujocoIcebreakerBtn").classList.add("active");
+    $("#mujocoVotingBtn").classList.remove("active");
+  }
+  if ([SESSION_PHASES.BALLOT_PREPARATION, SESSION_PHASES.VOTING, SESSION_PHASES.RESULT_CONFIRMATION, SESSION_PHASES.CLOSED].includes(blackboard.phase)) {
+    state.mujocoRuntime?.setScenario("voting");
+    $("#mujocoVotingBtn").classList.add("active");
+    $("#mujocoIcebreakerBtn").classList.remove("active");
+  }
+}
+
+function renderProtocolDecision(blackboard, fallbackEvent, eventIndex) {
+  const copy = {
+    [SESSION_PHASES.WAITING]: { owner: "阶段路由 Agent", status: "等待开始", title: "等待有效会话事件", reason: "当前只有会话基线，尚未检测到破冰或参与者发言。", next: "保持空状态，等待第一条有效事件", evidence: "尚无可用于阶段判断的事件" },
+    [SESSION_PHASES.ICEBREAKER]: { owner: "破冰 Workflow", status: "流程执行中", title: "运行击鼓传花", reason: "阶段路由 Agent 已调用确定性的破冰流程，MooTu 正在通过 Pod 灯光接力选择首位发言者。", next: "等待被选参与者完成第一轮有效发言", evidence: "检测到击鼓传花或 Pod 接力事件" },
+    [SESSION_PHASES.BALLOT_PREPARATION]: { owner: "方案综合 Agent", status: "整理候选", title: "生成可投票候选方案", reason: "讨论内容保持不变；方案综合 Agent 正在去重、归类并冻结候选版本。", next: "候选通过校验后交给投票 Workflow", evidence: "检测到讨论结束或候选方案整理事件" },
+    [SESSION_PHASES.VOTING]: { owner: "投票 Workflow", status: "收集投票", title: "收集 Pod 投票", reason: "候选版本已经冻结，投票流程只接受当前参与者与有效 Pod 的一次选择。", next: "校验人数、重复票与缺失票", evidence: "检测到投票开启或 Pod 选择事件" },
+    [SESSION_PHASES.RESULT_CONFIRMATION]: { owner: "投票 Workflow", status: "确认结果", title: "确认投票结果", reason: "投票收集已经结束，系统正在公布结果并检查是否需要平票回退。", next: "确认共识后关闭会话；平票则返回候选整理", evidence: "检测到投票结束或结果公布事件" },
+    [SESSION_PHASES.CLOSED]: { owner: "阶段路由 Agent", status: "会话完成", title: "会话已结束", reason: "开场、讨论与投票记录均已写入事件日志，当前快照进入只读完成态。", next: "保留日志与最终快照供复盘", evidence: "检测到明确的结束事件" }
+  }[blackboard.phase];
+  $("#activeAgentLabel").textContent = copy.owner;
+  $("#decisionStatus").textContent = copy.status;
+  $("#decisionStatus").className = `decision-tag ${blackboard.phase === SESSION_PHASES.CLOSED ? "calm" : "active"}`;
+  $("#decisionTitle").textContent = copy.title;
+  $("#decisionReason").textContent = copy.reason;
+  $("#followUp").textContent = copy.next;
+  $("#evidenceList").innerHTML = `<li>${escapeHtml(copy.evidence)}</li>${blackboard.currentEvent ? `<li>${escapeHtml(blackboard.currentEvent.speaker)}：${escapeHtml(blackboard.currentEvent.text)}</li>` : ""}`;
+  clearMetric("participation", ["不开放", "偏不开放", "偏开放", "开放"]);
+  clearMetric("diversity", ["收束", "偏收束", "偏发散", "发散"]);
+  clearMetric("flow", ["停滞", "偏停滞", "偏流动", "流动"]);
+  const cycle = $("#decisionCycle");
+  ["路由", "校验", blackboard.activeWorkflow ? "工作流" : "Agent", "回写"].forEach((label, index) => { cycle.querySelectorAll("span")[index].textContent = label; });
+  cycle.querySelectorAll("span").forEach((step, index) => step.classList.toggle("active", index === (blackboard.phase === SESSION_PHASES.WAITING ? 0 : 2)));
+  const action = state.config.core.strategies.observe;
+  $("#robot").classList.toggle("intervening", blackboard.phase !== SESSION_PHASES.WAITING && blackboard.phase !== SESSION_PHASES.CLOSED);
+  orientRobotTo(null);
+  $("#robotMood").textContent = `${copy.status} · ${copy.owner}`;
+  applyActionOutput(action, blackboard.currentEvent?.type === EVENT_TYPES.ROBOT_UTTERANCE ? blackboard.currentEvent.text : "");
+  $("#podTarget").textContent = blackboard.activeWorkflow ? `${copy.owner} · ${blackboard.participants.length} 个 Pod` : "群体陪伴";
+  $("#podActions").textContent = blackboard.activeWorkflow ? "流程受全局 Harness 校验" : "等待阶段事件";
+  $("#podOrb").classList.toggle("active", Boolean(blackboard.activeWorkflow));
+  $("#jsonOutput").textContent = JSON.stringify({ runtime: { architecture: "session-harness", event_log_count: state.sessionHarness.eventLog.length }, blackboard, agent_view: state.sessionHarness.getAgentView(blackboard.activeAgent), fallback_discussion_event: fallbackEvent?.time, memory: { discussion_entries: eventIndex } }, null, 2);
+}
+
 function setTime(time) {
   state.time = clamp(Number(time), 0, state.session.duration);
   $("#scrubber").value = state.time;
   $("#currentTime").textContent = formatPresentationTime(state.time);
   const event = eventAt(state.time);
+  const blackboard = state.sessionHarness.setTime(state.time, event.stage);
   const eventIndex = state.events.indexOf(event);
   const previousEvent = state.activeEventIndex == null ? null : state.events[state.activeEventIndex];
   if (state.activeEventIndex != null && eventIndex !== state.activeEventIndex) announceTransition(event, previousEvent);
   state.activeEventIndex = eventIndex;
   renderTranscriptFeed(state.time);
+  syncMujocoPhase(blackboard);
   syncMujocoSpeaker(state.time);
-  renderDecision(event, eventIndex, state.time);
+  if (blackboard.phase === SESSION_PHASES.DISCUSSION) renderDecision(event, eventIndex, state.time);
+  else renderProtocolDecision(blackboard, event, eventIndex);
   renderParticipation(state.time);
-  $$(".stage-switch button").forEach((button) => button.classList.toggle("active", button.dataset.stage === event.stage));
-  $("#stageTitle").textContent = event.stage === "converge" ? "收敛决策" : "发散探索";
-  $("#stageReason").textContent = event.stage === "converge"
-    ? "比较候选方向、明确取舍，并逐步形成可执行结论。"
-    : "扩大参与和想法空间，暂不急于形成结论。";
+  const macroStage = macroStageFor(blackboard, event.stage);
+  $$(".stage-switch button").forEach((button) => button.classList.toggle("active", button.dataset.stage === macroStage));
+  const stageCopy = macroStageCopy(macroStage);
+  $("#stageTitle").textContent = stageCopy.title;
+  $("#stageReason").textContent = stageCopy.reason;
   document.body.dataset.stage = event.stage;
+  document.body.dataset.phase = blackboard.phase;
   $$(".timeline-event").forEach((button, index) => button.classList.toggle("active", state.events[index] === event));
   if ($("#video").src && Math.abs($("#video").currentTime - state.time) > 1) $("#video").currentTime = state.time;
 }
@@ -205,7 +276,9 @@ function renderTranscriptFeed(time) {
     state.lastTranscriptKey = transcriptKey;
     $("#transcriptFeed").innerHTML = visibleLines.map((line) => {
       const participant = state.session.participants.find((p) => p.id === line.speaker);
-      return `<div class="transcript-line"><span class="speaker-chip" style="background:${participant.color}">${escapeHtml(line.speaker)}</span><div><p></p><time>${formatPresentationTime(line.start)}–${formatPresentationTime(line.end)}</time></div></div>`;
+      const systemLabel = line.type === EVENT_TYPES.ROBOT_UTTERANCE ? "MooTu" : line.type === EVENT_TYPES.DEVICE_EVENT ? "设备" : line.type === EVENT_TYPES.SCENE_EVENT ? "现场" : line.speaker;
+      const chipColor = participant?.color || (line.type === EVENT_TYPES.ROBOT_UTTERANCE ? "#b18614" : "#66686d");
+      return `<div class="transcript-line ${participant ? "" : "system-event"}"><span class="speaker-chip" style="background:${chipColor}">${escapeHtml(systemLabel)}</span><div><p></p><time>${formatPresentationTime(line.start)}–${formatPresentationTime(line.end)}</time></div></div>`;
     }).join("");
   }
 
@@ -246,40 +319,42 @@ function parseTranscriptText(text) {
 function normalizeTranscript(data) {
   const lines = Array.isArray(data) ? data : data.transcript;
   if (!Array.isArray(lines) || !lines.length) throw new Error("没有识别到逐字稿内容");
-  const normalized = lines.map((line, index) => {
+  const normalized = annotateTranscript(lines.map((line, index) => {
     const start = Number(line.start);
     const end = Number(line.end ?? start + 8);
     const speaker = String(line.speaker ?? "").trim();
     const text = String(line.text ?? "").trim();
     if (!Number.isFinite(start) || !Number.isFinite(end) || !speaker || !text) throw new Error(`第 ${index + 1} 条格式不完整`);
-    return { start, end, speaker, text };
-  }).sort((a, b) => a.start - b.start);
-  const speakerCount = new Set(normalized.map((line) => line.speaker)).size;
+    return { start, end, speaker, text, type: line.type };
+  }).sort((a, b) => a.start - b.start));
+  const speakerCount = participantSpeakers(normalized).length;
   if (speakerCount > 6) throw new Error(`检测到 ${speakerCount} 位发言人；当前 MuJoCo 场景最多支持 6 位`);
   return normalized;
 }
 
 function loadImportedTranscript(lines, fileName) {
   const palette = ["#f59e0b", "#7c6ee6", "#31a68a", "#e76f51", "#4788c7", "#b565a7"];
-  const speakers = [...new Set(lines.map((line) => line.speaker))];
+  const speakers = participantSpeakers(lines);
   state.session.transcript = lines;
   state.session.participants = speakers.map((speaker, index) => ({ id: speaker, name: speaker, color: palette[index % palette.length] }));
   state.session.duration = Math.max(...lines.map((line) => line.end)) + 5;
+  state.sessionHarness = createSessionHarness(state.session);
+  state.macroPhase = null;
   state.lastTranscriptKey = null;
   state.mujocoSpeakerKey = null;
   state.pendingMujocoSpeaker = null;
   state.utteranceCache.clear();
   state.utteranceRequests.clear();
-  state.events = runAgent({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration, config: state.config }).events;
+  state.events = runAgent({ transcript: discussionTranscript(), participants: state.session.participants, duration: state.session.duration, config: state.config }).events;
   renderStatic();
   configureMujocoParticipants();
   setTime(0);
-  toast(`已载入 ${fileName} · ${lines.length} 条发言`);
+  toast(`已载入 ${fileName} · ${lines.length} 条事件 · ${speakers.length} 位参与者`);
   if (state.model === "deepseek") void runFullAgentAnalysis({ automatic: true });
 }
 
 function renderParticipation(time) {
-  const lines = state.session.transcript.filter((line) => line.start <= time);
+  const lines = state.session.transcript.filter((line) => line.start <= time && line.type === EVENT_TYPES.PARTICIPANT_UTTERANCE);
   const totals = Object.fromEntries(state.session.participants.map((p) => [p.id, 0]));
   const turns = Object.fromEntries(state.session.participants.map((p) => [p.id, 0]));
   lines.forEach((line) => {
@@ -386,6 +461,7 @@ function renderToolTrace(trace = state.agentTrace) {
 }
 
 function renderDecision(event, eventIndex, time) {
+  $("#activeAgentLabel").textContent = "讨论促进 Agent";
   const action = state.config.core.strategies[event.strategy];
   const intervening = event.strategy !== "observe";
   $("#decisionStatus").textContent = intervening ? "准备介入" : "持续观察";
@@ -405,7 +481,7 @@ function renderDecision(event, eventIndex, time) {
     : "单路径规则";
   renderToolTrace();
   $("#evidenceList").innerHTML = event.evidence.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
-  const hasDiscussionEvidence = state.session.transcript.some((line) => line.start <= time);
+  const hasDiscussionEvidence = state.session.transcript.some((line) => line.start <= time && line.type === EVENT_TYPES.PARTICIPANT_UTTERANCE);
   if (hasDiscussionEvidence) {
     setMetric("participation", event.metrics.participation, ["不开放", "偏不开放", "偏开放", "开放"], event.stage);
     setMetric("diversity", event.metrics.diversity, ["收束", "偏收束", "偏发散", "发散"], event.stage);
@@ -422,7 +498,7 @@ function renderDecision(event, eventIndex, time) {
   $("#robot").classList.toggle("intervening", intervening);
   orientRobotTo(event.target);
   $("#robotMood").textContent = `${action.expression} · ${action.posture}`;
-  const contextLines = state.session.transcript.filter((line) => line.start <= time).slice(-6);
+  const contextLines = state.session.transcript.filter((line) => line.start <= time && line.type === EVENT_TYPES.PARTICIPANT_UTTERANCE).slice(-6);
   const utteranceKey = `replay:${event.time}:${event.strategy}:${event.target || "group"}`;
   const renderedAction = event.target ? { ...action, orient: `朝向 ${event.target}` } : action;
   const utterance = event.utterance || contextualUtterance({ key: utteranceKey, strategy: event.strategy, target: event.target, stage: event.stage, transcript: contextLines, action: renderedAction });
@@ -432,7 +508,7 @@ function renderDecision(event, eventIndex, time) {
   $("#podTarget").textContent = event.target ? `Pod ${event.target} · 个体鼓励` : "群体陪伴";
   $("#podActions").textContent = `${pod.temperature} · ${pod.vibration} · ${pod.breathing}`;
   $("#podOrb").classList.toggle("active", Boolean(event.target));
-  $("#jsonOutput").textContent = JSON.stringify({ timestamp: formatPresentationTime(event.time), source_timestamp: formatTime(event.time), playback_speed: timelineSpeed(), runtime: { architecture: "pi", tool_trace: state.agentTrace, execution: state.agentExecution }, stage: event.stage, stage_control: { recommendation: event.stageRecommendation, consecutive_votes: event.stageVotes }, observation: { evidence: event.evidence, missing_evidence: gaps }, assessment: event.metrics, decision: { source: event.decisionSource, intervene: intervening, strategy: event.strategy, target: event.target, reason: event.reason, confidence: event.confidence, expected_effect: event.expectedEffect, selection_margin: event.selectionMargin, candidate_evaluation: event.candidates }, memory: { previous_outcome: event.reflection, entries: eventIndex }, actions: { core: { ...renderedAction, display: utterance }, pod: event.target ? { target: event.target, ...pod } : pod }, follow_up: event.followUp }, null, 2);
+  $("#jsonOutput").textContent = JSON.stringify({ timestamp: formatPresentationTime(event.time), source_timestamp: formatTime(event.time), playback_speed: timelineSpeed(), runtime: { architecture: "session-harness+pi", event_log_count: state.sessionHarness.eventLog.length, tool_trace: state.agentTrace, execution: state.agentExecution }, blackboard: state.sessionHarness.blackboard, agent_view: state.sessionHarness.getAgentView("discussion_facilitator"), stage: event.stage, stage_control: { recommendation: event.stageRecommendation, consecutive_votes: event.stageVotes }, observation: { evidence: event.evidence, missing_evidence: gaps }, assessment: event.metrics, decision: { source: event.decisionSource, intervene: intervening, strategy: event.strategy, target: event.target, reason: event.reason, confidence: event.confidence, expected_effect: event.expectedEffect, selection_margin: event.selectionMargin, candidate_evaluation: event.candidates }, memory: { previous_outcome: event.reflection, entries: eventIndex }, actions: { core: { ...renderedAction, display: utterance }, pod: event.target ? { target: event.target, ...pod } : pod }, follow_up: event.followUp }, null, 2);
 }
 
 function metricTarget(name, stage) {
@@ -467,6 +543,8 @@ function renderDecisionCycle(intervening, activeIndex) {
   const cycle = $("#decisionCycle");
   const steps = [...cycle.querySelectorAll("span")];
   cycle.classList.toggle("observing-only", !intervening);
+  steps[0].textContent = "观察";
+  steps[1].textContent = "判断";
   steps[2].textContent = intervening ? "介入" : "不介入";
   steps[3].textContent = intervening ? "反馈" : "继续观察";
   steps.forEach((item, index) => item.classList.toggle("active", index === activeIndex));
@@ -737,7 +815,7 @@ async function runFullAgentAnalysis({ automatic = false } = {}) {
   $("#candidateSummary").textContent = "生成并比较候选策略…";
   $("#toolTrace").textContent = "等待 pi Agent 调用工具…";
   try {
-    const result = await fetch("/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration }) }).then(async (r) => { if (!r.ok) throw new Error((await r.json()).error); return r.json(); });
+    const result = await fetch("/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ transcript: discussionTranscript(), participants: state.session.participants, duration: state.session.duration }) }).then(async (r) => { if (!r.ok) throw new Error((await r.json()).error); return r.json(); });
     if (requestId !== state.analysisRequestId) return;
     state.events = result.events;
     state.agentTrace = result.trace || [];
@@ -751,7 +829,7 @@ async function runFullAgentAnalysis({ automatic = false } = {}) {
   } catch (error) {
     if (requestId !== state.analysisRequestId) return;
     if (state.model !== "deepseek") {
-      const local = runAgent({ transcript: state.session.transcript, participants: state.session.participants, duration: state.session.duration, config: state.config });
+      const local = runAgent({ transcript: discussionTranscript(), participants: state.session.participants, duration: state.session.duration, config: state.config });
       state.events = local.events;
       state.agentTrace = [];
       state.agentExecution = null;

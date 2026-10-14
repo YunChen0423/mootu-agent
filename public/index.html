@@ -14,9 +14,13 @@
       <section id="stageFocus" class="header-stage" aria-label="当前讨论阶段">
         <strong id="stageTitle" class="visually-hidden">发散探索</strong>
         <div class="stage-switch">
-          <button class="active" data-stage="diverge"><small>01</small> 发散探索</button>
+          <button data-stage="icebreaker"><small>01</small> 破冰启动</button>
           <span class="stage-arrow" aria-hidden="true">→</span>
-          <button data-stage="converge"><small>02</small> 收敛决策</button>
+          <button class="active" data-stage="diverge"><small>02</small> 发散探索</button>
+          <span class="stage-arrow" aria-hidden="true">→</span>
+          <button data-stage="converge"><small>03</small> 收敛决策</button>
+          <span class="stage-arrow" aria-hidden="true">→</span>
+          <button data-stage="voting"><small>04</small> 投票确认</button>
         </div>
         <p id="stageReason" class="visually-hidden">扩大参与和想法空间，暂不急于形成结论。</p>
       </section>
@@ -80,7 +84,7 @@
         </article>
 
         <article class="panel reasoning-panel">
-          <div class="panel-head"><div><span class="step">02</span><h2>Agent 判断</h2></div><span id="decisionStatus" class="decision-tag calm">持续观察</span></div>
+          <div class="panel-head"><div><span class="step">02</span><h2>Agent 判断</h2></div><div class="decision-ownership"><small id="activeAgentLabel">讨论促进 Agent</small><span id="decisionStatus" class="decision-tag calm">持续观察</span></div></div>
           <div class="decision-card">
             <div><span class="section-label">本轮决策</span><h3 id="decisionTitle">保持观察</h3></div>
             <p id="decisionReason">当前没有足够证据支持介入。</p>

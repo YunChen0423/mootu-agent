@@ -17,6 +17,8 @@ test("live mode exposes an explicit user-triggered camera control", () => {
 
 test("primary discussion stage and distinct state labels are present", () => {
   assert.match(html, /id="stageFocus"/);
+  assert.match(html, /破冰启动/);
+  assert.match(html, /投票确认/);
   assert.match(app, /偏不开放/);
   assert.match(app, /偏发散/);
   assert.match(app, /偏流动/);
@@ -158,7 +160,15 @@ test("uploaded speakers define the visible pod count and time zero has no metric
   assert.match(browserMujoco, /podBaseGeomIds/);
   assert.match(browserMujoco, /demo\.activePods\.includes\(index\)/);
   assert.match(app, /speakers\.length} 位发言人/);
-  assert.match(app, /speakerCount > 6/);
+  assert.match(app, /participantSpeakers\(normalized\)/);
   assert.match(app, /hasDiscussionEvidence[\s\S]*clearMetric\("participation"/);
   assert.match(app, /showTarget = activeIndex >= 0/);
+});
+
+test("session harness separates immutable events, blackboard and scoped agent ownership", () => {
+  assert.match(app, /createSessionHarness/);
+  assert.match(app, /activeAgentLabel/);
+  assert.match(app, /renderProtocolDecision/);
+  assert.match(app, /EVENT_TYPES\.PARTICIPANT_UTTERANCE/);
+  assert.match(html, /方案综合 Agent|讨论促进 Agent/);
 });
