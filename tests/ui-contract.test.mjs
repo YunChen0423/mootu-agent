@@ -112,7 +112,7 @@ test("embodied scene supports six dynamic members and target-specific orientatio
   assert.match(app, /participants\.slice\(0, 6\)/);
   assert.match(app, /Math\.atan2/);
   assert.match(app, /--focus-angle/);
-  assert.match(app, /orient: `朝向 \$\{event\.target\}`/);
+  assert.match(app, /orient: `头颈朝向 \$\{event\.target\}`/);
   assert.match(enhancements, /--member-x/);
   assert.match(enhancements, /rotate\(var\(--focus-angle/);
 });
@@ -148,11 +148,31 @@ test("embodied output reproduces the interaction demo in browser MuJoCo", () => 
 
 test("the current transcript speaker drives MooTu toward the matching pod", () => {
   assert.match(app, /function syncMujocoSpeaker/);
-  assert.match(app, /mujocoRuntime\?\.focusSpeaker\(line\.speaker\)/);
+  assert.match(app, /attentionMode/);
+  assert.match(app, /稍微靠近 \$\{currentSpeaker\}/);
+  assert.match(app, /头颈朝向 \$\{currentSpeaker\}/);
   assert.match(browserMujoco, /POD_LAYOUTS = Object\.freeze/);
-  assert.match(browserMujoco, /const focusSpeaker = \(speakerId\)/);
+  assert.match(browserMujoco, /const focusSpeaker = \(speakerId,/);
   assert.match(browserMujoco, /SPEAKER_NAVIGATION_DURATION = 1\.2/);
   assert.match(app, /configureMujocoParticipants/);
+});
+
+test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry stable", () => {
+  assert.match(browserMujoco, /PASSIVE_APPROACH_RATIO = 0\.22/);
+  assert.match(browserMujoco, /INVITE_APPROACH_RATIO = 0\.34/);
+  assert.match(browserMujoco, /demo\.action\?\.posture\?\.includes\("前倾"\)/);
+  assert.match(browserMujoco, /mesh\.userData\.geometryKey !== key/);
+  assert.match(browserMujoco, /setColor\(candidateGeomIds\[0\], \[0, 0, 0, 0\]\)/);
+  assert.match(app, /embodiment\.action/);
+});
+
+test("all orchestrators remain visible and the active owner is highlighted", () => {
+  assert.match(html, /id="agentOrchestration"/);
+  assert.match(html, /阶段路由 Agent/);
+  assert.match(html, /方案综合 Agent/);
+  assert.match(app, /setActiveOrchestration/);
+  assert.match(styles, /\.agent-node\.active/);
+  assert.match(styles, /\.agent-node\.monitoring/);
 });
 
 test("uploaded speakers define the visible pod count and time zero has no metric state", () => {

@@ -8,8 +8,8 @@
     "strategies": {
       "invite_quiet_member": {
         "label": "低压力邀请",
-        "move": "靠近少说者",
-        "orient": "朝向少说者",
+        "move": "稍微靠近少说者",
+        "orient": "头颈朝向少说者",
         "posture": "前倾",
         "voice": "邀请",
         "expression": "鼓励",

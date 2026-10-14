@@ -85,6 +85,17 @@
 
         <article class="panel reasoning-panel">
           <div class="panel-head"><div><span class="step">02</span><h2>Agent 判断</h2></div><div class="decision-ownership"><small id="activeAgentLabel">讨论促进 Agent</small><span id="decisionStatus" class="decision-tag calm">持续观察</span></div></div>
+          <div id="agentOrchestration" class="agent-orchestration" aria-label="多 Agent 阶段编排">
+            <div class="agent-node" data-owner="router"><small>全程监控</small><strong>阶段路由 Agent</strong><span>校验阶段切换</span></div>
+            <i>→</i>
+            <div class="agent-node" data-owner="icebreaker"><small>开场</small><strong>破冰 Workflow</strong><span>击鼓传花</span></div>
+            <i>→</i>
+            <div class="agent-node" data-owner="discussion"><small>中段</small><strong>讨论促进 Agent</strong><span>发散 ↔ 收敛</span></div>
+            <i>→</i>
+            <div class="agent-node" data-owner="synthesis"><small>结尾准备</small><strong>方案综合 Agent</strong><span>归类候选</span></div>
+            <i>→</i>
+            <div class="agent-node" data-owner="voting"><small>结尾</small><strong>投票 Workflow</strong><span>收票与确认</span></div>
+          </div>
           <div class="decision-card">
             <div><span class="section-label">本轮决策</span><h3 id="decisionTitle">保持观察</h3></div>
             <p id="decisionReason">当前没有足够证据支持介入。</p>

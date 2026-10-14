@@ -107,7 +107,6 @@ function syncMujocoSpeaker(time) {
   if (key === state.mujocoSpeakerKey) return;
   state.mujocoSpeakerKey = key;
   state.pendingMujocoSpeaker = line.speaker;
-  state.mujocoRuntime?.focusSpeaker(line.speaker);
 }
 
 function configureMujocoParticipants() {
@@ -145,6 +144,18 @@ function syncMujocoPhase(blackboard) {
     $("#mujocoVotingBtn").classList.add("active");
     $("#mujocoIcebreakerBtn").classList.remove("active");
   }
+}
+
+function setActiveOrchestration(blackboard) {
+  const activeOwner = blackboard.phase === SESSION_PHASES.ICEBREAKER ? "icebreaker"
+    : blackboard.phase === SESSION_PHASES.DISCUSSION ? "discussion"
+      : blackboard.phase === SESSION_PHASES.BALLOT_PREPARATION ? "synthesis"
+        : [SESSION_PHASES.VOTING, SESSION_PHASES.RESULT_CONFIRMATION].includes(blackboard.phase) ? "voting"
+          : "router";
+  $$("#agentOrchestration .agent-node").forEach((node) => {
+    node.classList.toggle("active", node.dataset.owner === activeOwner);
+    node.classList.toggle("monitoring", node.dataset.owner === "router" && activeOwner !== "router");
+  });
 }
 
 function renderProtocolDecision(blackboard, fallbackEvent, eventIndex) {
@@ -186,6 +197,7 @@ function setTime(time) {
   $("#currentTime").textContent = formatPresentationTime(state.time);
   const event = eventAt(state.time);
   const blackboard = state.sessionHarness.setTime(state.time, event.stage);
+  setActiveOrchestration(blackboard);
   const eventIndex = state.events.indexOf(event);
   const previousEvent = state.activeEventIndex == null ? null : state.events[state.activeEventIndex];
   if (state.activeEventIndex != null && eventIndex !== state.activeEventIndex) announceTransition(event, previousEvent);
@@ -389,7 +401,6 @@ async function initBrowserMujoco() {
       onStatus: (label) => { $("#mujocoStrategy").textContent = label; }
     });
     configureMujocoParticipants();
-    if (state.pendingMujocoSpeaker) state.mujocoRuntime.focusSpeaker(state.pendingMujocoSpeaker);
     $("#mujocoScreen").classList.add("streaming");
   } catch (error) {
     setMujocoStatus("MuJoCo 加载失败", "请刷新页面或检查网络", false);
@@ -397,9 +408,10 @@ async function initBrowserMujoco() {
   }
 }
 
-function dispatchMujocoCommand(event, force = false, utterance = "") {
+function dispatchMujocoCommand(event, force = false, utterance = "", embodiment = {}) {
   if (!event) return;
-  const key = `${event.time ?? "live"}:${event.strategy}:${event.target || "group"}:${utterance}`;
+  const target = embodiment.target || event.target || null;
+  const key = `${event.time ?? "live"}:${event.strategy}:${target || "group"}:${embodiment.attentionMode || "none"}:${utterance}`;
   if (!force && key === state.mujocoCommandKey) return;
   state.mujocoCommandKey = key;
   const action = state.config.core.strategies[event.strategy] || state.config.core.strategies.observe;
@@ -408,9 +420,11 @@ function dispatchMujocoCommand(event, force = false, utterance = "") {
     version: 1,
     issued_at: new Date().toISOString(),
     strategy: event.strategy,
-    target: event.target || null,
+    target,
+    speaker: embodiment.speaker || null,
+    attention_mode: embodiment.attentionMode || (event.target ? "invite" : "passive"),
     stage: event.stage || document.body.dataset.stage || "diverge",
-    core: { ...action, ...(event.target ? { orient: `朝向 ${event.target}` } : {}), display: utterance || event.utterance || action.display || "" }
+    core: { ...action, ...(embodiment.action || {}), display: utterance || event.utterance || action.display || "" }
   };
   state.pendingMujocoAction = command;
   state.mujocoRuntime?.setAction(command);
@@ -495,15 +509,23 @@ function renderDecision(event, eventIndex, time) {
   const phaseCount = intervening ? 4 : 2;
   const cyclePhase = Math.min(phaseCount - 1, Math.floor(clamp((time - event.time) / Math.max(nextTime - event.time, 1), 0, 0.999) * phaseCount));
   renderDecisionCycle(intervening, cyclePhase);
+  const currentLine = transcriptAt(time);
+  const currentSpeaker = currentLine?.type === EVENT_TYPES.PARTICIPANT_UTTERANCE ? currentLine.speaker : null;
+  const embodimentTarget = event.target || (!intervening ? currentSpeaker : null);
+  const attentionMode = event.target ? "invite" : "passive";
   $("#robot").classList.toggle("intervening", intervening);
-  orientRobotTo(event.target);
-  $("#robotMood").textContent = `${action.expression} · ${action.posture}`;
+  orientRobotTo(embodimentTarget);
   const contextLines = state.session.transcript.filter((line) => line.start <= time && line.type === EVENT_TYPES.PARTICIPANT_UTTERANCE).slice(-6);
   const utteranceKey = `replay:${event.time}:${event.strategy}:${event.target || "group"}`;
-  const renderedAction = event.target ? { ...action, orient: `朝向 ${event.target}` } : action;
+  const renderedAction = event.target
+    ? { ...action, move: `稍微靠近 ${event.target}`, orient: `头颈朝向 ${event.target}`, posture: "轻微前倾" }
+    : embodimentTarget
+      ? { ...action, move: `稍微靠近 ${currentSpeaker}`, orient: `头颈朝向 ${currentSpeaker}`, posture: "轻微前倾", voice: "保持安静", expression: "倾听" }
+      : action;
+  $("#robotMood").textContent = `${renderedAction.expression} · ${renderedAction.posture}`;
   const utterance = event.utterance || contextualUtterance({ key: utteranceKey, strategy: event.strategy, target: event.target, stage: event.stage, transcript: contextLines, action: renderedAction });
   applyActionOutput(renderedAction, utterance);
-  dispatchMujocoCommand(event, false, utterance);
+  dispatchMujocoCommand(event, false, utterance, { target: embodimentTarget, speaker: embodimentTarget && !event.target ? currentSpeaker : null, attentionMode, action: renderedAction });
   const pod = event.target ? state.config.pod.responses.low_participation : state.config.pod.responses.normal;
   $("#podTarget").textContent = event.target ? `Pod ${event.target} · 个体鼓励` : "群体陪伴";
   $("#podActions").textContent = `${pod.temperature} · ${pod.vibration} · ${pod.breathing}`;
