@@ -2,6 +2,8 @@ const MUJOCO_BASE = "https://cdn.jsdelivr.net/npm/@mujoco/mujoco@3.15.0/";
 const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js";
 const MODEL_URL = "/mujoco/exact-physics-model.xml";
 const VISUALS_URL = "/mujoco/visuals-exact-v4.bin.gz";
+const SETTLE_SECONDS = 0.5;
+const NECK_SEGMENT_COUNT = 3;
 
 const PODS = [
   [0, 0.040], [-0.046, 0.025], [-0.046, -0.025],
@@ -136,6 +138,8 @@ export async function createBrowserMujoco({ canvas }) {
     "neck_3_pitch", "neck_3_side", "head_pitch", "head_yaw"
   ].map((name) => [name, actuatorId(`${name}_motor`)]));
   const freeQpos = Number(model.jnt_qposadr[jointId("robot_freejoint")]);
+  const freeDof = Number(model.jnt_dofadr[jointId("robot_freejoint")]);
+  const wheelDofs = ["wheel_FL_joint", "wheel_FR_joint"].map((name) => Number(model.jnt_dofadr[jointId(name)]));
   const podGeomIds = Array.from({ length: 6 }, (_, index) => geomId(`pod_${index + 1}_light`));
   const exactVisuals = visualMeshes.map((asset) => {
     const geometry = exactGeometryFor(THREE, asset);
@@ -174,6 +178,19 @@ export async function createBrowserMujoco({ canvas }) {
     const id = actuators[name];
     if (id >= 0) data.ctrl[id] = value;
   };
+  const haltBaseMotion = () => {
+    for (let index = 0; index < 6; index += 1) data.qvel[freeDof + index] = 0;
+    for (const dof of wheelDofs) data.qvel[dof] = 0;
+    setControl("wheel_FL", 0);
+    setControl("wheel_FR", 0);
+  };
+  const settleSimulation = () => {
+    data.ctrl.fill(0);
+    const settledAt = Number(data.time) + SETTLE_SECONDS;
+    while (Number(data.time) < settledAt) mujoco.mj_step(model, data);
+    haltBaseMotion();
+    mujoco.mj_forward(model, data);
+  };
   const setColor = (id, rgba) => rgba.forEach((value, index) => { model.geom_rgba[id * 4 + index] = value; });
   const setAction = (next) => {
     command = next || { strategy: "observe", target: null };
@@ -203,8 +220,8 @@ export async function createBrowserMujoco({ canvas }) {
         left = -turn;
         right = turn;
       } else if (distance > 0.022) {
-        left = 8;
-        right = 8;
+        left = -8;
+        right = -8;
       }
       neckPitch = 0.055;
       headPitch = 0.08;
@@ -220,14 +237,14 @@ export async function createBrowserMujoco({ canvas }) {
       neckPitch = 0.06;
       headPitch = Math.max(0, Math.sin(elapsed * 4.2)) * 0.1;
     } else {
-      headYaw = Math.sin(now / 1700) * 0.18;
-      neckSide = Math.sin(now / 2300) * 0.012;
+      headYaw = Math.sin(elapsed / 1.7) * 0.18;
+      neckSide = Math.sin(elapsed / 2.3) * 0.012;
     }
     setControl("wheel_FL", left);
     setControl("wheel_FR", right);
     for (const index of [1, 2, 3]) {
-      setControl(`neck_${index}_pitch`, neckPitch);
-      setControl(`neck_${index}_side`, neckSide);
+      setControl(`neck_${index}_pitch`, neckPitch / NECK_SEGMENT_COUNT);
+      setControl(`neck_${index}_side`, neckSide / NECK_SEGMENT_COUNT);
     }
     setControl("head_pitch", headPitch);
     setControl("head_yaw", headYaw);
@@ -296,6 +313,7 @@ export async function createBrowserMujoco({ canvas }) {
     frameId = requestAnimationFrame(animate);
   };
   mujoco.mj_forward(model, data);
+  settleSimulation();
   setAction(command);
   frameId = requestAnimationFrame(animate);
 
@@ -304,6 +322,7 @@ export async function createBrowserMujoco({ canvas }) {
     reset() {
       mujoco.mj_resetData(model, data);
       mujoco.mj_forward(model, data);
+      settleSimulation();
       commandStarted = performance.now();
     },
     dispose() {
