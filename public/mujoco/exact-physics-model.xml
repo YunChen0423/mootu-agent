@@ -1,0 +1,209 @@
+<mujoco model="mootu_interaction_demo">
+  <option timestep="0.001" integrator="implicitfast"/>
+  <visual>
+    <headlight
+      ambient="0.45 0.45 0.45"
+      diffuse="0.8 0.8 0.8"
+      specular="0.2 0.2 0.2"/>
+  </visual>
+
+  <worldbody>
+    <light name="top_light" pos="0 0 1" dir="0 0 -1" directional="true" diffuse="1 1 1"/>
+    <geom
+      name="table"
+      type="box"
+      pos="0 0 -0.001"
+      size="0.080 0.055 0.001"
+      rgba="0.30 0.30 0.32 1"
+      friction="1.2 0.01 0.001"
+      condim="4"/>
+
+    <!-- Six Pods around the meeting table. The dark cylinders are bases and
+         the spheres are program-controlled light indicators. -->
+    <geom name="pod_1_base" type="cylinder" pos="0 0.040 0.0012" size="0.0050 0.0012" rgba="0.10 0.10 0.12 1" contype="0" conaffinity="0"/>
+    <geom name="pod_1_light" type="sphere" pos="0 0.040 0.0040" size="0.0034" rgba="0.16 0.16 0.19 1" contype="0" conaffinity="0"/>
+
+    <geom name="pod_2_base" type="cylinder" pos="-0.046 0.025 0.0012" size="0.0050 0.0012" rgba="0.10 0.10 0.12 1" contype="0" conaffinity="0"/>
+    <geom name="pod_2_light" type="sphere" pos="-0.046 0.025 0.0040" size="0.0034" rgba="0.16 0.16 0.19 1" contype="0" conaffinity="0"/>
+
+    <geom name="pod_3_base" type="cylinder" pos="-0.046 -0.025 0.0012" size="0.0050 0.0012" rgba="0.10 0.10 0.12 1" contype="0" conaffinity="0"/>
+    <geom name="pod_3_light" type="sphere" pos="-0.046 -0.025 0.0040" size="0.0034" rgba="0.16 0.16 0.19 1" contype="0" conaffinity="0"/>
+
+    <geom name="pod_4_base" type="cylinder" pos="0 -0.040 0.0012" size="0.0050 0.0012" rgba="0.10 0.10 0.12 1" contype="0" conaffinity="0"/>
+    <geom name="pod_4_light" type="sphere" pos="0 -0.040 0.0040" size="0.0034" rgba="0.16 0.16 0.19 1" contype="0" conaffinity="0"/>
+
+    <geom name="pod_5_base" type="cylinder" pos="0.046 -0.025 0.0012" size="0.0050 0.0012" rgba="0.10 0.10 0.12 1" contype="0" conaffinity="0"/>
+    <geom name="pod_5_light" type="sphere" pos="0.046 -0.025 0.0040" size="0.0034" rgba="0.16 0.16 0.19 1" contype="0" conaffinity="0"/>
+
+    <geom name="pod_6_base" type="cylinder" pos="0.046 0.025 0.0012" size="0.0050 0.0012" rgba="0.10 0.10 0.12 1" contype="0" conaffinity="0"/>
+    <geom name="pod_6_light" type="sphere" pos="0.046 0.025 0.0040" size="0.0034" rgba="0.16 0.16 0.19 1" contype="0" conaffinity="0"/>
+
+    <!-- Two physical result markers used by the convergence-voting scene. -->
+    <geom name="candidate_a" type="cylinder" pos="-0.013 0.020 0.0008" size="0.0040 0.0008" rgba="0.35 0.22 0.08 1" contype="0" conaffinity="0"/>
+    <geom name="candidate_b" type="cylinder" pos="0.013 0.020 0.0008" size="0.0040 0.0008" rgba="0.08 0.22 0.35 1" contype="0" conaffinity="0"/>
+
+    <body name="robot" pos="0 0 0.00615">
+    <freejoint name="robot_freejoint"/>
+    <!-- Keep the compact robot's center of mass below its narrow wheelbase. -->
+    <inertial
+      pos="-0.00019 0 -0.0035"
+      mass="0.05"
+      diaginertia="0.00000062 0.00000054 0.00000075"/>
+    <geom
+      name="chassis_collision"
+      type="box"
+      pos="0 0 -0.001"
+      size="0.0045 0.0050 0.0035"
+      rgba="0 0 0 0"
+      friction="0.8 0.01 0.001"/>
+    <!-- Visual meshes do not participate in collision; chassis_collision does. -->
+    <!-- Three internal spherical debug proxies form the flexible neck skeleton.
+       They will eventually be covered by a skinned visual shell. Each
+       connection bends about X and Y, but deliberately has no Z/yaw degree of
+       freedom, so the neck curves without twisting. -->
+  <body name="neck_segment_1" pos="-0.00019 -0.00010 0.00350">
+    <joint name="neck_1_pitch_joint" type="hinge" axis="1 0 0" range="-16 16" damping="0.00005" stiffness="0.00025"/>
+    <joint name="neck_1_side_joint" type="hinge" axis="0 1 0" range="-16 16" damping="0.00005" stiffness="0.00025"/>
+    <geom name="neck_ball_1_geom" type="sphere" size="0.00150" mass="0.00034" rgba="0.72 0.72 0.72 1" contype="0" conaffinity="0"/>
+
+    <body name="neck_segment_2" pos="0 0 0.00270">
+      <joint name="neck_2_pitch_joint" type="hinge" axis="1 0 0" range="-16 16" damping="0.00005" stiffness="0.00025"/>
+      <joint name="neck_2_side_joint" type="hinge" axis="0 1 0" range="-16 16" damping="0.00005" stiffness="0.00025"/>
+      <geom name="neck_ball_2_geom" type="sphere" size="0.00140" mass="0.00033" rgba="0.72 0.72 0.72 1" contype="0" conaffinity="0"/>
+
+      <body name="neck_segment_3" pos="0 0 0.00270">
+        <joint name="neck_3_pitch_joint" type="hinge" axis="1 0 0" range="-16 16" damping="0.00005" stiffness="0.00025"/>
+        <joint name="neck_3_side_joint" type="hinge" axis="0 1 0" range="-16 16" damping="0.00005" stiffness="0.00025"/>
+        <geom name="neck_ball_3_geom" type="sphere" size="0.00150" mass="0.00033" rgba="0.72 0.72 0.72 1" contype="0" conaffinity="0"/>
+
+        <!-- The head joint is eccentric but fully inside the top sphere:
+             distance from sphere center is 1.08 mm versus a 1.50 mm radius.
+             The unchanged head mesh offset preserves its original world pose
+             while the sphere extends into the central underside recess. -->
+        <body name="head_joint_frame" pos="0.000013 -0.000600 -0.00090">
+          <inertial pos="0 0 0" mass="0.0001" diaginertia="0.0000000001 0.0000000001 0.0000000001"/>
+          <joint name="head_pitch_joint" type="hinge" axis="1 0 0" range="-25 25" damping="0.00004"/>
+          <joint name="head_yaw_joint" type="hinge" axis="0 0 1" range="-60 60" damping="0.00003"/>
+
+          <body name="head">
+            <inertial
+              pos="-0.000013 -0.00073 0.00642"
+              mass="0.004"
+              diaginertia="0.00000025 0.00000025 0.00000025"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </body>
+    <body name="wheel_BL" pos="0.001600 -0.002577 -0.005830">
+    <inertial pos="0 0 0" mass="0.0003" diaginertia="0.000000000010 0.000000000010 0.000000000010"/>
+    <joint name="wheel_BL_joint" type="ball" damping="0.000001"/>
+    <geom
+      name="wheel_BL_collision"
+      type="sphere"
+      size="0.0002835"
+      rgba="0 0 0 0"
+      friction="0.03 0.001 0.0001"
+      condim="3"/>
+    <geom
+      name="wheel_BL_marker"
+      type="box"
+      pos="0 0.0004 0"
+      size="0.0001 0.0001 0.0001"
+      rgba="1 0 0 1"
+      contype="0"
+      conaffinity="0"/>
+  </body>
+
+  <body name="wheel_BR" pos="-0.001976 -0.002577 -0.005830">
+    <inertial pos="0 0 0" mass="0.0003" diaginertia="0.000000000010 0.000000000010 0.000000000010"/>
+    <joint name="wheel_BR_joint" type="ball" damping="0.000001"/>
+    <geom
+      name="wheel_BR_collision"
+      type="sphere"
+      size="0.0002835"
+      rgba="0 0 0 0"
+      friction="0.03 0.001 0.0001"
+      condim="3"/>
+    <geom
+      name="wheel_BR_marker"
+      type="box"
+      pos="0 0.0004 0"
+      size="0.0001 0.0001 0.0001"
+      rgba="0 1 0 1"
+      contype="0"
+      conaffinity="0"/>
+  </body>
+
+  <body name="wheel_FL" pos="0.002180 0.001270 -0.005150">
+    <inertial pos="0 0 0" mass="0.001" diaginertia="0.000000000435 0.000000000245 0.000000000245"/>
+    <joint name="wheel_FL_joint" type="hinge" axis="1 0 0" damping="0.000001"/>
+    <geom
+      name="wheel_FL_collision"
+      type="cylinder"
+      size="0.000933 0.0002835"
+      quat="0.70710678 0 0.70710678 0"
+      rgba="0 0 0 0"
+      friction="0.8 0.005 0.0001"
+      condim="3"/>
+    <geom
+      name="wheel_FL_marker"
+      type="box"
+      pos="0 0.0004 0"
+      size="0.0001 0.0001 0.0001"
+      rgba="0 0 1 1"
+      contype="0"
+      conaffinity="0"/>
+  </body>
+
+  <body name="wheel_FR" pos="-0.002552 0.001270 -0.005150">
+    <inertial pos="0 0 0" mass="0.001" diaginertia="0.000000000435 0.000000000245 0.000000000245"/>
+    <joint name="wheel_FR_joint" type="hinge" axis="1 0 0" damping="0.000001"/>
+    <geom
+      name="wheel_FR_collision"
+      type="cylinder"
+      size="0.000933 0.0002835"
+      quat="0.70710678 0 0.70710678 0"
+      rgba="0 0 0 0"
+      friction="0.8 0.005 0.0001"
+      condim="3"/>
+    <geom
+      name="wheel_FR_marker"
+      type="box"
+      pos="0 0.0004 0"
+      size="0.0001 0.0001 0.0001"
+      rgba="1 1 0 1"
+      contype="0"
+      conaffinity="0"/>
+  </body>
+  </body>
+  </worldbody>
+
+  <actuator>
+    <velocity name="wheel_FL_motor" joint="wheel_FL_joint" kv="0.0001" ctrlrange="-80 80" forcerange="-0.0005 0.0005"/>
+    <velocity name="wheel_FR_motor" joint="wheel_FR_joint" kv="0.0001" ctrlrange="-80 80" forcerange="-0.0005 0.0005"/>
+
+    <!-- Each motor receives one third of the requested total bend. Keeping
+         identical gains makes the three spherical links form an even arc. -->
+    <position name="neck_1_pitch_motor" joint="neck_1_pitch_joint" kp="0.010" kv="0.00018" ctrlrange="-0.2094 0.2094" forcerange="-0.002 0.002"/>
+    <position name="neck_1_side_motor" joint="neck_1_side_joint" kp="0.010" kv="0.00018" ctrlrange="-0.2094 0.2094" forcerange="-0.002 0.002"/>
+    <position name="neck_2_pitch_motor" joint="neck_2_pitch_joint" kp="0.010" kv="0.00018" ctrlrange="-0.2094 0.2094" forcerange="-0.002 0.002"/>
+    <position name="neck_2_side_motor" joint="neck_2_side_joint" kp="0.010" kv="0.00018" ctrlrange="-0.2094 0.2094" forcerange="-0.002 0.002"/>
+    <position name="neck_3_pitch_motor" joint="neck_3_pitch_joint" kp="0.010" kv="0.00018" ctrlrange="-0.2094 0.2094" forcerange="-0.002 0.002"/>
+    <position name="neck_3_side_motor" joint="neck_3_side_joint" kp="0.010" kv="0.00018" ctrlrange="-0.2094 0.2094" forcerange="-0.002 0.002"/>
+    <position
+      name="head_pitch_motor"
+      joint="head_pitch_joint"
+      kp="0.008"
+      kv="0.00018"
+      ctrlrange="-0.4363 0.4363"
+      forcerange="-0.002 0.002"/>
+    <position
+      name="head_yaw_motor"
+      joint="head_yaw_joint"
+      kp="0.006"
+      kv="0.00015"
+      ctrlrange="-1.0472 1.0472"
+      forcerange="-0.002 0.002"/>
+  </actuator>
+</mujoco>

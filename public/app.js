@@ -279,11 +279,11 @@ function setMujocoStatus(status, detail, connected = false) {
 }
 
 async function initBrowserMujoco() {
-  setMujocoStatus("MuJoCo WASM 加载中", "首次打开可能需要几十秒 · 无需本地程序", false);
+  setMujocoStatus("完整模型 MuJoCo 加载中", "正在下载未减面的原始网格 · 无需本地程序", false);
   try {
     state.mujocoRuntime = await createBrowserMujoco({ canvas: $("#mujocoViewport") });
     $("#mujocoScreen").classList.add("streaming");
-    setMujocoStatus("MuJoCo 在线运行", "浏览器内计算 · 无需本地程序", true);
+    setMujocoStatus("完整模型 MuJoCo 在线运行", "原始完整拓扑 · 浏览器内计算", true);
     if (state.pendingMujocoAction) state.mujocoRuntime.setAction(state.pendingMujocoAction);
   } catch (error) {
     setMujocoStatus("MuJoCo 加载失败", "请刷新页面或检查网络", false);

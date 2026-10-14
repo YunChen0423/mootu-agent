@@ -1,17 +1,21 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { build } from "esbuild";
 
-const assetNames = ["index.html", "styles.css", "enhancements.css", "app.js", "agent-engine.js", "live-sensing.js", "browser-mujoco.js", "config/actions.json", "data/sample-session.json"];
+const assetNames = ["index.html", "styles.css", "enhancements.css", "app.js", "agent-engine.js", "live-sensing.js", "browser-mujoco.js", "mujoco/exact-physics-model.xml", "config/actions.json", "data/sample-session.json"];
 const assets = {};
 for (const name of assetNames) assets[`/${name}`] = await readFile(`public/${name}`, "utf8");
+const binaryAssets = {
+  "/mujoco/visuals-exact-v3.bin.gz": (await readFile("public/mujoco/visuals-exact-v3.bin.gz")).toString("base64")
+};
 const config = JSON.parse(assets["/config/actions.json"]);
 
 const worker = `import { decideLiveWithAI, runAIAgent } from "./ai-agent.mjs";
 import { generateContextualUtterance } from "./public/agent-engine.js";
 
 const ASSETS = ${JSON.stringify(assets)};
+const BINARY_ASSETS = ${JSON.stringify(binaryAssets)};
 const CONFIG = ${JSON.stringify(config)};
-const TYPES = { html: "text/html; charset=utf-8", css: "text/css; charset=utf-8", js: "text/javascript; charset=utf-8", json: "application/json; charset=utf-8" };
+const TYPES = { html: "text/html; charset=utf-8", css: "text/css; charset=utf-8", js: "text/javascript; charset=utf-8", json: "application/json; charset=utf-8", xml: "application/xml; charset=utf-8" };
 const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": TYPES.json } });
 const modelOptions = (env) => ({ apiKey: env.DEEPSEEK_API_KEY || "", baseUrl: env.DEEPSEEK_BASE_URL || "https://api.deepseek.com", model: env.DEEPSEEK_MODEL || "deepseek-chat" });
 
@@ -38,6 +42,13 @@ export default { async fetch(request, env) {
     if (request.method === "POST" && url.pathname === "/api/agent/decide") return reply(await decideLiveWithAI({ ...(await request.json()), config: CONFIG, ...modelOptions(env) }));
     if (request.method === "POST" && url.pathname === "/api/generate-message") return reply(await generateMessage(await request.json(), env));
     const path = url.pathname === "/" ? "/index.html" : url.pathname;
+    const encoded = BINARY_ASSETS[path];
+    if (encoded != null) {
+      const raw = atob(encoded);
+      const body = new Uint8Array(raw.length);
+      for (let index = 0; index < raw.length; index += 1) body[index] = raw.charCodeAt(index);
+      return new Response(body, { headers: { "content-type": "application/gzip", "cache-control": "public, max-age=31536000, immutable" } });
+    }
     const content = ASSETS[path];
     if (content == null) return new Response("Not found", { status: 404 });
     const extension = path.split(".").pop();

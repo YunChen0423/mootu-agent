@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
 const liveSensing = await readFile(new URL("../public/live-sensing.js", import.meta.url), "utf8");
 const app = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+const browserMujoco = await readFile(new URL("../public/browser-mujoco.js", import.meta.url), "utf8");
 const styles = await readFile(new URL("../public/styles.css", import.meta.url), "utf8");
 const enhancements = await readFile(new URL("../public/enhancements.css", import.meta.url), "utf8");
 
@@ -123,8 +124,11 @@ test("AI analysis starts automatically and the button is only a retry", () => {
 
 test("embodied output runs MuJoCo in the browser without a local bridge", () => {
   assert.match(html, /id="mujocoViewport"/);
-  assert.match(html, /浏览器内运行 · 无需本地程序/);
+  assert.match(html, /未减面原始网格 · 无需本地程序/);
   assert.match(app, /createBrowserMujoco/);
+  assert.match(browserMujoco, /visuals-exact-v3\.bin\.gz/);
+  assert.match(browserMujoco, /MjModel\.from_xml_string/);
+  assert.match(browserMujoco, /VISUAL_BINDINGS/);
   assert.match(app, /type: "mootu\.command"/);
   assert.match(app, /version: 1/);
   assert.match(app, /dispatchMujocoCommand\(event/);
