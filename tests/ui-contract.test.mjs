@@ -166,7 +166,7 @@ test("embodied scene supports six dynamic members and target-specific orientatio
   assert.match(app, /participants\.slice\(0, 6\)/);
   assert.match(app, /Math\.atan2/);
   assert.match(app, /--focus-angle/);
-  assert.match(app, /orient: `头颈朝向 \$\{event\.target\}`/);
+  assert.match(app, /orient: `头颈朝向 \$\{invitedTarget\}`/);
   assert.match(enhancements, /--member-x/);
   assert.match(enhancements, /rotate\(var\(--focus-angle/);
 });
@@ -218,15 +218,17 @@ test("Pod feedback keeps only the concrete behavior card", () => {
 });
 
 test("the current transcript speaker drives MooTu toward the matching pod", () => {
-  assert.match(app, /function syncMujocoSpeaker/);
   assert.match(app, /function participantAt/);
+  assert.match(app, /function invitedParticipantFromLine/);
   assert.match(app, /attentionMode/);
   assert.match(app, /move: "保持中心"/);
   assert.match(app, /头颈朝向 \$\{currentSpeaker\}/);
   assert.match(app, /target: invitedTarget, speaker: invitedTarget \? null : currentSpeaker/);
   assert.match(browserMujoco, /POD_LAYOUTS = Object\.freeze/);
   assert.match(browserMujoco, /const focusSpeaker = \(speakerId,/);
-  assert.match(browserMujoco, /SPEAKER_NAVIGATION_DURATION = 1\.2/);
+  assert.match(browserMujoco, /SPEAKER_NAVIGATION_DURATION = 1\.8/);
+  assert.match(app, /embodiment\.speaker \|\| "none"/);
+  assert.match(app, /transcriptStart: activeLine\?\.start/);
   assert.match(app, /configureMujocoParticipants/);
 });
 
@@ -242,7 +244,7 @@ test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry s
   assert.match(browserMujoco, /setScenario[\s\S]*startBaseTransition\(now/);
   assert.match(browserMujoco, /demo\.action\?\.posture\?\.includes\("前倾"\)/);
   assert.match(browserMujoco, /mesh\.userData\.geometryKey !== key/);
-  assert.match(browserMujoco, /setColor\(candidateGeomIds\[0\], \[0, 0, 0, 0\]\)/);
+  assert.doesNotMatch(browserMujoco, /candidateGeomIds|candidate_a|candidate_b/);
   assert.match(app, /embodiment\.action/);
 });
 
@@ -251,8 +253,17 @@ test("speaker and encouragement targets use distinct pod signals", () => {
   assert.match(browserMujoco, /const INVITED = \[0\.18, 1, 0\.46, 1\]/);
   assert.match(browserMujoco, /invitationPulse/);
   assert.match(browserMujoco, /demo\.attentionMode === "invite" \? invitedColor : SPEAKING/);
-  assert.match(app, /classList\.toggle\("targeted", Boolean\(event\.target\)\)/);
+  assert.match(app, /classList\.toggle\("targeted", Boolean\(invitedTarget\)\)/);
   assert.match(enhancements, /\.pod-section\.targeted \.pod-row/);
+});
+
+test("screen information uses an AI topic and scripted MooTu speech remains visible", () => {
+  assert.match(app, /state\.screenTopic/);
+  assert.match(app, /const normalizeScreenTopic/);
+  assert.match(app, /result\.analysis\?\.screenTopic/);
+  assert.match(app, /robotLine\?\.text \|\| event\.utterance/);
+  assert.match(app, /invitedParticipantFromLine\(robotLine\) \|\| event\.target/);
+  assert.match(browserMujoco, /MooTu 正在说话 · 面向小组/);
 });
 
 test("all orchestrators remain visible and the active owner is highlighted", () => {
@@ -303,6 +314,7 @@ test("the discussion preview cannot be compressed upward", () => {
 test("group-state dimensions only appear while the discussion facilitator owns the phase", () => {
   assert.match(html, /class="state-block" hidden/);
   assert.match(app, /function renderProtocolDecision[\s\S]*discussionOwned/);
+  assert.match(app, /\[SESSION_PHASES\.DISCUSSION, SESSION_PHASES\.BALLOT_PREPARATION\]\.includes\(blackboard\.phase\)\) renderDecision/);
   assert.match(app, /function renderDecision[\s\S]*\$\("\.state-block"\)\.hidden = false/);
 });
 
@@ -312,6 +324,8 @@ test("uploaded speakers define the visible pod count and time zero has no metric
   assert.match(browserMujoco, /demo\.activePods\.includes\(index\)/);
   assert.match(app, /speakers\.length} 位发言人/);
   assert.match(app, /participantSpeakers\(normalized\)/);
+  assert.match(app, /metaMatch[\s\S]*speaker: metaMatch\[5\]/);
+  assert.match(app, /现场\|设备/);
   assert.match(app, /hasDiscussionEvidence[\s\S]*clearMetric\("participation"/);
   assert.match(app, /showTarget = activeIndex >= 0/);
 });

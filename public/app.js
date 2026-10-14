@@ -5,7 +5,7 @@ import { createSessionHarness, annotateTranscript, participantSpeakers, EVENT_TY
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const state = { session: null, config: null, events: [], sessionHarness: null, macroPhase: null, agentTrace: [], agentExecution: null, time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoRuntime: null, pendingMujocoAction: null, mujocoCommandKey: null, pendingMujocoSpeaker: null, mujocoSpeakerKey: null };
+const state = { session: null, config: null, events: [], sessionHarness: null, macroPhase: null, agentTrace: [], agentExecution: null, screenTopic: "", time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoRuntime: null, pendingMujocoAction: null, mujocoCommandKey: null };
 state.currentBlackboard = null;
 
 const formatTime = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
@@ -14,6 +14,11 @@ const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => (
 const timelineSpeed = () => state.config?.display?.timeline_speed_multiplier ?? 1;
 const formatPresentationTime = (seconds) => formatTime(seconds / timelineSpeed());
 const discussionTranscript = () => state.session.transcript.filter((line) => line.type === EVENT_TYPES.PARTICIPANT_UTTERANCE);
+const normalizeScreenTopic = (value) => {
+  const topic = String(value || "").replace(/[“”「」]/g, "").replace(/[。！？；;，,].*$/, "").replace(/^(?:讨论|关于|主题)[：:\s]*/, "").trim();
+  if (topic.length < 3 || topic.length > 8 || /[吗呢么？?]$/.test(topic) || /^(?:这次|我们|大家|如何|怎么|为什么|是否|请|让)/.test(topic)) return "";
+  return topic;
+};
 const METRIC_LABELS = Object.freeze({
   participation: ["不开放", "适中", "开放"],
   diversity: ["收束", "平衡", "发散"],
@@ -45,6 +50,7 @@ async function load() {
     fetch("/config/actions.json").then((r) => r.json())
   ]);
   state.session.transcript = annotateTranscript(state.session.transcript);
+  state.screenTopic = normalizeScreenTopic(String(state.session.title || "").replace(/(?:创意)?讨论$/, ""));
   state.sessionHarness = createSessionHarness(state.session);
   configureMujocoParticipants();
   const status = await fetch("/api/status").then((r) => r.json()).catch(() => ({ mode: "fallback" }));
@@ -131,13 +137,14 @@ function participantAt(time) {
   return recent && time - recent.end <= 3 ? recent : null;
 }
 
-function syncMujocoSpeaker(time) {
-  const line = participantAt(time);
-  if (!line?.speaker || line.type !== EVENT_TYPES.PARTICIPANT_UTTERANCE) return;
-  const key = `${line.speaker}:${line.start}`;
-  if (key === state.mujocoSpeakerKey) return;
-  state.mujocoSpeakerKey = key;
-  state.pendingMujocoSpeaker = line.speaker;
+function invitedParticipantFromLine(line) {
+  if (line?.type !== EVENT_TYPES.ROBOT_UTTERANCE || !/(?:邀请|发言|说说|想法|怎么看|听听)/.test(line.text)) return null;
+  return state.session.participants.find((participant) => {
+    const values = [participant.id, participant.name].map((value) => String(value || "").trim()).filter(Boolean);
+    return values.some((value) => value.length === 1 && /[A-Za-z0-9]/.test(value)
+      ? new RegExp(`(^|[^A-Za-z0-9])${value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z0-9]|$)`, "i").test(line.text)
+      : line.text.includes(value));
+  })?.id || null;
 }
 
 function configureMujocoParticipants() {
@@ -218,8 +225,10 @@ function setActiveOrchestration(blackboard) {
 
 function candidateInformation(blackboard = state.sessionHarness?.blackboard) {
   const snapshot = blackboard?.candidates;
-  if (!snapshot?.items?.length) return "话题整理中";
-  return snapshot.items.slice(0, 3).map((item) => String(item.label || "").slice(0, 8)).filter(Boolean).join(" · ");
+  if ([SESSION_PHASES.VOTING, SESSION_PHASES.RESULT_CONFIRMATION].includes(blackboard?.phase) && snapshot?.items?.length) {
+    return snapshot.items.slice(0, 3).map((item) => String(item.label || "").slice(0, 8)).filter(Boolean).join(" · ");
+  }
+  return state.screenTopic || "讨论主题提炼中";
 }
 
 function renderProtocolDecision(blackboard, fallbackEvent, eventIndex) {
@@ -274,8 +283,7 @@ function setTime(time) {
   state.activeEventIndex = eventIndex;
   renderTranscriptFeed(state.time);
   syncMujocoPhase(blackboard);
-  syncMujocoSpeaker(state.time);
-  if (blackboard.phase === SESSION_PHASES.DISCUSSION) renderDecision(event, eventIndex, state.time);
+  if ([SESSION_PHASES.DISCUSSION, SESSION_PHASES.BALLOT_PREPARATION].includes(blackboard.phase)) renderDecision(event, eventIndex, state.time);
   else renderProtocolDecision(blackboard, event, eventIndex);
   renderParticipation(state.time);
   document.body.dataset.stage = event.stage;
@@ -310,8 +318,6 @@ function enterLiveSession() {
   state.liveTranscript = "";
   state.liveStartedAt = performance.now();
   state.lastTranscriptKey = null;
-  state.mujocoSpeakerKey = null;
-  state.pendingMujocoSpeaker = null;
   state.activeEventIndex = null;
   state.utteranceCache.clear();
   state.utteranceRequests.clear();
@@ -379,6 +385,12 @@ function secondsFromTimestamp(minutes, seconds) {
 
 function parseTranscriptText(text) {
   return text.split(/\r?\n/).map((rawLine) => {
+    const metaMatch = rawLine.match(/^\s*\[?(\d{1,2}):(\d{2})(?:\s*[-–—]\s*(\d{1,2}):(\d{2}))?\]?\s+[（(]\s*(现场|设备)(?:说明)?[:：]\s*(.+?)[）)]\s*$/);
+    if (metaMatch) {
+      const start = secondsFromTimestamp(metaMatch[1], metaMatch[2]);
+      const end = metaMatch[3] ? secondsFromTimestamp(metaMatch[3], metaMatch[4]) : start + 8;
+      return { start, end, speaker: metaMatch[5], text: metaMatch[6].trim() };
+    }
     const match = rawLine.match(/^\s*\[?(\d{1,2}):(\d{2})(?:\s*[-–—]\s*(\d{1,2}):(\d{2}))?\]?\s+([^:：]+)[:：]\s*(.+)$/);
     if (!match) return null;
     const start = secondsFromTimestamp(match[1], match[2]);
@@ -412,8 +424,7 @@ function loadImportedTranscript(lines, fileName) {
   state.sessionHarness = createSessionHarness(state.session);
   state.macroPhase = null;
   state.lastTranscriptKey = null;
-  state.mujocoSpeakerKey = null;
-  state.pendingMujocoSpeaker = null;
+  state.screenTopic = "讨论主题提炼中";
   state.utteranceCache.clear();
   state.utteranceRequests.clear();
   state.events = runAgent({ transcript: discussionTranscript(), participants: state.session.participants, duration: state.session.duration, config: state.config }).events;
@@ -482,7 +493,7 @@ async function initBrowserMujoco() {
 function dispatchMujocoCommand(event, force = false, utterance = "", embodiment = {}) {
   if (!event) return;
   const target = embodiment.target || event.target || null;
-  const key = `${event.time ?? "live"}:${event.strategy}:${target || "group"}:${embodiment.attentionMode || "none"}:${utterance}`;
+  const key = `${event.time ?? "live"}:${event.strategy}:${target || "group"}:${embodiment.speaker || "none"}:${embodiment.transcriptStart ?? "none"}:${embodiment.attentionMode || "none"}:${utterance}`;
   if (!force && key === state.mujocoCommandKey) return;
   state.mujocoCommandKey = key;
   const action = state.config.core.strategies[event.strategy] || state.config.core.strategies.observe;
@@ -493,6 +504,7 @@ function dispatchMujocoCommand(event, force = false, utterance = "", embodiment 
     strategy: event.strategy,
     target,
     speaker: embodiment.speaker || null,
+    robot_speaking: Boolean(embodiment.robotSpeaking),
     attention_mode: embodiment.attentionMode || (event.target ? "invite" : "passive"),
     stage: event.stage || document.body.dataset.stage || "diverge",
     core: { ...action, ...(embodiment.action || {}), display: embodiment.information || utterance || event.utterance || action.display || "" }
@@ -574,31 +586,35 @@ function renderDecision(event, eventIndex, time) {
     clearMetric("diversity", METRIC_LABELS.diversity);
     clearMetric("flow", METRIC_LABELS.flow);
   }
-  const currentLine = participantAt(time);
+  const activeLine = transcriptAt(time);
+  const robotLine = activeLine?.type === EVENT_TYPES.ROBOT_UTTERANCE ? activeLine : null;
+  const currentLine = robotLine ? null : participantAt(time);
   const currentSpeaker = currentLine?.speaker || null;
-  const invitedTarget = event.target || null;
+  const invitedTarget = invitedParticipantFromLine(robotLine) || event.target || null;
   const embodimentTarget = invitedTarget || currentSpeaker;
   const attentionMode = invitedTarget ? "invite" : "passive";
   $("#robot").classList.toggle("intervening", intervening);
   orientRobotTo(embodimentTarget);
   const contextLines = state.session.transcript.filter((line) => line.start <= time && line.type === EVENT_TYPES.PARTICIPANT_UTTERANCE).slice(-6);
   const utteranceKey = `replay:${event.time}:${event.strategy}:${event.target || "group"}`;
-  const renderedAction = event.target
-    ? { ...action, move: `稍微靠近 ${event.target}`, orient: `头颈朝向 ${event.target}`, posture: "轻微前倾" }
+  const renderedAction = invitedTarget
+    ? { ...action, move: `稍微靠近 ${invitedTarget}`, orient: `头颈朝向 ${invitedTarget}`, posture: "轻微前倾", voice: "温和邀请", expression: "鼓励" }
+    : robotLine
+      ? { ...action, move: "回到中心", orient: "面向小组", posture: "中立", voice: "清晰引导", expression: "引导" }
     : embodimentTarget
       ? { ...action, move: "保持中心", orient: `头颈朝向 ${currentSpeaker}`, posture: "轻微倾向", voice: "保持安静", expression: "倾听" }
       : action;
   $("#robotMood").textContent = `${renderedAction.expression} · ${renderedAction.posture}`;
-  const utterance = event.utterance || contextualUtterance({ key: utteranceKey, strategy: event.strategy, target: event.target, stage: event.stage, transcript: contextLines, action: renderedAction });
+  const utterance = robotLine?.text || event.utterance || contextualUtterance({ key: utteranceKey, strategy: event.strategy, target: invitedTarget, stage: event.stage, transcript: contextLines, action: renderedAction });
   const information = candidateInformation();
   applyActionOutput(renderedAction, utterance, information);
-  dispatchMujocoCommand(event, false, utterance, { target: invitedTarget, speaker: invitedTarget ? null : currentSpeaker, attentionMode, action: renderedAction, information });
-  const pod = event.target ? state.config.pod.responses.low_participation : state.config.pod.responses.normal;
-  $("#podTarget").textContent = event.target ? `Pod ${event.target} · 个体鼓励` : "群体陪伴";
+  dispatchMujocoCommand(event, false, utterance, { target: invitedTarget, speaker: invitedTarget ? null : currentSpeaker, transcriptStart: activeLine?.start, robotSpeaking: Boolean(robotLine), attentionMode, action: renderedAction, information });
+  const pod = invitedTarget ? state.config.pod.responses.low_participation : state.config.pod.responses.normal;
+  $("#podTarget").textContent = invitedTarget ? `Pod ${invitedTarget} · 个体鼓励` : "群体陪伴";
   $("#podActions").textContent = `${pod.temperature} · ${pod.vibration} · ${pod.breathing}`;
-  $("#podOrb").classList.toggle("active", Boolean(event.target));
-  $(".pod-section").classList.toggle("targeted", Boolean(event.target));
-  $("#jsonOutput").textContent = JSON.stringify({ timestamp: formatPresentationTime(event.time), source_timestamp: formatTime(event.time), playback_speed: timelineSpeed(), runtime: { architecture: "session-harness+pi", event_log_count: state.sessionHarness.eventLog.length, tool_trace: state.agentTrace, execution: state.agentExecution }, blackboard: state.sessionHarness.blackboard, agent_views: { discussion: state.sessionHarness.getAgentView("discussion_facilitator"), synthesis: state.sessionHarness.getAgentView("candidate_synthesis") }, stage: event.stage, stage_control: { recommendation: event.stageRecommendation, consecutive_votes: event.stageVotes }, observation: { evidence: event.evidence, missing_evidence: gaps }, assessment: event.metrics, decision: { source: event.decisionSource, intervene: intervening, strategy: event.strategy, target: event.target, reason: event.reason, confidence: event.confidence, expected_effect: event.expectedEffect, selection_margin: event.selectionMargin, candidate_evaluation: event.candidates }, memory: { previous_outcome: event.reflection, entries: eventIndex }, actions: { core: { ...renderedAction, display: information }, pod: event.target ? { target: event.target, ...pod } : pod }, follow_up: event.followUp }, null, 2);
+  $("#podOrb").classList.toggle("active", Boolean(invitedTarget));
+  $(".pod-section").classList.toggle("targeted", Boolean(invitedTarget));
+  $("#jsonOutput").textContent = JSON.stringify({ timestamp: formatPresentationTime(event.time), source_timestamp: formatTime(event.time), playback_speed: timelineSpeed(), runtime: { architecture: "session-harness+pi", event_log_count: state.sessionHarness.eventLog.length, tool_trace: state.agentTrace, execution: state.agentExecution }, blackboard: state.sessionHarness.blackboard, agent_views: { discussion: state.sessionHarness.getAgentView("discussion_facilitator"), synthesis: state.sessionHarness.getAgentView("candidate_synthesis") }, stage: event.stage, stage_control: { recommendation: event.stageRecommendation, consecutive_votes: event.stageVotes }, observation: { evidence: event.evidence, missing_evidence: gaps }, assessment: event.metrics, decision: { source: event.decisionSource, intervene: intervening, strategy: event.strategy, target: invitedTarget, reason: event.reason, confidence: event.confidence, expected_effect: event.expectedEffect, selection_margin: event.selectionMargin, candidate_evaluation: event.candidates }, memory: { previous_outcome: event.reflection, entries: eventIndex }, actions: { core: { ...renderedAction, display: information }, pod: invitedTarget ? { target: invitedTarget, ...pod } : pod }, follow_up: event.followUp }, null, 2);
 }
 
 function renderStageCriteria(event, time) {
@@ -924,11 +940,14 @@ async function runFullAgentAnalysis({ automatic = false } = {}) {
     const result = await fetch("/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ transcript: discussionTranscript(), participants: state.session.participants, duration: state.session.duration }) }).then(async (r) => { if (!r.ok) throw new Error((await r.json()).error); return r.json(); });
     if (requestId !== state.analysisRequestId) return;
     state.events = result.events;
+    const topicCandidates = [result.analysis?.screenTopic, ...(result.analysis?.ideaClusters || []), state.screenTopic];
+    state.screenTopic = topicCandidates.map(normalizeScreenTopic).find(Boolean) || "讨论主题提炼中";
     state.agentTrace = result.trace || [];
     state.agentExecution = result.execution || null;
     renderStatic();
     setTime(0);
     state.model = result.mode;
+    $("#decisionSource").textContent = result.mode === "deepseek" ? "DeepSeek 提案 · pi Harness 决策" : "规则安全回退";
     $("#modelBadge").classList.toggle("fallback", result.mode !== "deepseek");
     $("#modelBadge").innerHTML = `<i></i>${result.mode === "deepseek" ? "DeepSeek AI Agent · 已连接" : "AI 未配置 · 安全回退"}`;
     toast(`${automatic ? "自动" : "重新"}${result.mode === "deepseek" ? " AI 分析" : "安全回退分析"}完成：${result.analysis.summary}`);

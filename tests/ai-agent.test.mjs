@@ -37,7 +37,7 @@ test("without a secret the pi-backed agent is explicit about rule fallback", asy
 });
 
 test("all perception, decision, action, dispatch, and memory capabilities are tools", async () => {
-  const runtime = completeRuntime({ summary: "AI 已制定策略", events: [
+  const runtime = completeRuntime({ summary: "AI 已制定策略", screen_topic: "校园独处空间", events: [
     { time: 0, stage_recommendation: "diverge", evidence: [], missing_evidence: [], candidates: [{ strategy: "invent_strategy", benefit: 99, disruption: 0, goal_fit: 99, confidence: 99 }] },
     { time: 43, stage_recommendation: "diverge", evidence: ["最近窗口未出现明显新方向"], missing_evidence: [], candidates: [
       { strategy: "observe", title: "继续观察", rationale: "保留空间", benefit: 35, disruption: 0, goal_fit: 40, confidence: 75, follow_up: "等待", expected_effect: "保留空间" },
@@ -52,6 +52,7 @@ test("all perception, decision, action, dispatch, and memory capabilities are to
   assert.equal(result.events[1].decisionSource, "deepseek+pi-harness");
   assert.equal(result.events[1].expectedEffect, "提升发散性");
   assert.equal(result.events[1].confidence, 85);
+  assert.equal(result.analysis.screenTopic, "校园独处空间");
   assert.ok(result.events[1].selectionMargin >= 8);
   assert.deepEqual(result.trace.filter((event) => event.type === "tool_execution_start").map((event) => event.tool), COMPLETE_TOOL_CHAIN);
   assert.equal(result.execution.recorded, true);

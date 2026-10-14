@@ -3,7 +3,6 @@ import { sanitizeEvents, sanitizeLiveDecision } from "./policy.mjs";
 
 const REQUIRED_READS = ["window", "participation", "flow", "diversity", "memory", "cooldown"];
 const emptyParameters = Type.Object({});
-const timesParameters = Type.Object({ times: Type.Optional(Type.Array(Type.Number(), { maxItems: 20 })) });
 
 function jsonResult(value, details = {}) {
   return { content: [{ type: "text", text: JSON.stringify(value) }], details };
@@ -11,11 +10,6 @@ function jsonResult(value, details = {}) {
 
 function errorResult(message, reason) {
   return { content: [{ type: "text", text: message }], details: { reason }, isError: true };
-}
-
-function selectObservations(observations, times) {
-  if (!times?.length) return observations;
-  return times.map((time) => observations.reduce((closest, item) => Math.abs(item.time - time) < Math.abs(closest.time - time) ? item : closest));
 }
 
 function actionPlans(decisions, config) {
@@ -106,11 +100,11 @@ export function createBatchToolset({ observations, participants, memory = [], co
     {
       name: "observe_discussion_window",
       label: "读取讨论窗口",
-      description: "读取指定检查点的最近逐字稿和可观察证据；省略 times 时返回全部检查点。",
-      parameters: timesParameters,
+      description: "读取全部检查点的最近逐字稿和可观察证据。批量分析必须覆盖完整会话。",
+      parameters: emptyParameters,
       executionMode: "sequential",
-      execute: async (_id, { times }) => {
-        const selected = selectObservations(observations, times).map(({ time, suggestedStage, evidence, recentTranscript }) => ({ time, suggestedStage, evidence, recentTranscript }));
+      execute: async () => {
+        const selected = observations.map(({ time, suggestedStage, evidence, recentTranscript }) => ({ time, suggestedStage, evidence, recentTranscript }));
         return mark("window", selected, { count: selected.length });
       }
     },
@@ -118,25 +112,25 @@ export function createBatchToolset({ observations, participants, memory = [], co
       name: "get_participation_metrics",
       label: "查询成员参与度",
       description: "查询参与开放性、发言时长、发言轮次和低参与目标。",
-      parameters: timesParameters,
+      parameters: emptyParameters,
       executionMode: "sequential",
-      execute: async (_id, { times }) => mark("participation", selectObservations(observations, times).map(({ time, metrics, diagnostics }) => ({ time, score: metrics.participation, speaking_seconds: diagnostics.speaking_seconds, turn_counts: diagnostics.turn_counts, quiet_target: diagnostics.quiet_target, quiet_seconds: diagnostics.quiet_seconds })))
+      execute: async () => mark("participation", observations.map(({ time, metrics, diagnostics }) => ({ time, score: metrics.participation, speaking_seconds: diagnostics.speaking_seconds, turn_counts: diagnostics.turn_counts, quiet_target: diagnostics.quiet_target, quiet_seconds: diagnostics.quiet_seconds })))
     },
     {
       name: "get_flow_metrics",
       label: "查询讨论流动性",
       description: "查询讨论流动性与当前连续沉默时长。",
-      parameters: timesParameters,
+      parameters: emptyParameters,
       executionMode: "sequential",
-      execute: async (_id, { times }) => mark("flow", selectObservations(observations, times).map(({ time, metrics, diagnostics }) => ({ time, score: metrics.flow, current_silence_seconds: diagnostics.current_silence_seconds })))
+      execute: async () => mark("flow", observations.map(({ time, metrics, diagnostics }) => ({ time, score: metrics.flow, current_silence_seconds: diagnostics.current_silence_seconds })))
     },
     {
       name: "get_diversity_metrics",
       label: "获取创意发散指标",
       description: "查询创意发散度、想法数量和近期新颖度。",
-      parameters: timesParameters,
+      parameters: emptyParameters,
       executionMode: "sequential",
-      execute: async (_id, { times }) => mark("diversity", selectObservations(observations, times).map(({ time, metrics, diagnostics }) => ({ time, score: metrics.diversity, idea_count: diagnostics.idea_count, recent_novelty: diagnostics.recent_novelty })))
+      execute: async () => mark("diversity", observations.map(({ time, metrics, diagnostics }) => ({ time, score: metrics.diversity, idea_count: diagnostics.idea_count, recent_novelty: diagnostics.recent_novelty })))
     },
     {
       name: "read_recent_memory",
@@ -167,7 +161,10 @@ export function createBatchToolset({ observations, participants, memory = [], co
         const missing = REQUIRED_READS.filter((name) => !state.reads.has(name));
         if (missing.length) return errorResult(`评估前缺少工具读取：${missing.join(", ")}`, "perception_tools_required");
         const events = sanitizeEvents(params.events, observations, participants, config);
-        state.analysis = { summary: String(params.summary).slice(0, 300), ideaClusters: params.idea_clusters || [], events };
+        const screenTopic = [params.screen_topic, ...(params.idea_clusters || [])]
+          .map((value) => String(value || "").replace(/[。！？；;，,].*$/, "").replace(/^(?:讨论|关于|主题)[：:\s]*/, "").trim())
+          .find((value) => value.length >= 3 && value.length <= 8 && !/[吗呢么？?]$/.test(value)) || "";
+        state.analysis = { summary: String(params.summary).slice(0, 300), screenTopic, ideaClusters: params.idea_clusters || [], events };
         return jsonResult(events.map(({ time, strategy, target, confidence, selectionMargin }) => ({ time, strategy, target, confidence, selectionMargin })), { count: events.length });
       }
     }
