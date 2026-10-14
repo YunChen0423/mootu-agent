@@ -113,7 +113,7 @@ function phaseAt(boundaries, time) {
 function ownerForPhase(phase) {
   if (phase === SESSION_PHASES.ICEBREAKER) return { activeAgent: "router", activeWorkflow: "icebreaker" };
   if (phase === SESSION_PHASES.DISCUSSION) return { activeAgent: "discussion_facilitator", activeWorkflow: null };
-  if (phase === SESSION_PHASES.BALLOT_PREPARATION) return { activeAgent: "candidate_synthesis", activeWorkflow: null };
+  if (phase === SESSION_PHASES.BALLOT_PREPARATION) return { activeAgent: "discussion_facilitator", activeWorkflow: null };
   if ([SESSION_PHASES.VOTING, SESSION_PHASES.RESULT_CONFIRMATION].includes(phase)) return { activeAgent: "router", activeWorkflow: "voting" };
   return { activeAgent: "router", activeWorkflow: null };
 }
@@ -146,9 +146,11 @@ export class SessionHarness {
     this.blackboard = Object.freeze({
       sessionTime: safeTime,
       phase,
-      discussionStage: phase === SESSION_PHASES.DISCUSSION ? discussionStage : null,
+      discussionStage: phase === SESSION_PHASES.DISCUSSION ? discussionStage : phase === SESSION_PHASES.BALLOT_PREPARATION ? "converge" : null,
       ...owner,
-      coactiveAgents: Object.freeze(phase === SESSION_PHASES.DISCUSSION ? ["discussion_facilitator", "candidate_synthesis"] : [owner.activeAgent]),
+      coactiveAgents: Object.freeze([SESSION_PHASES.DISCUSSION, SESSION_PHASES.BALLOT_PREPARATION].includes(phase)
+        ? ["discussion_facilitator", "candidate_synthesis"]
+        : [owner.activeAgent]),
       participants: this.participants,
       podMap: Object.freeze(this.participants.map((participant, index) => Object.freeze({ participantId: participant.id, podId: `pod-${index + 1}` }))),
       currentEvent,

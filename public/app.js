@@ -6,6 +6,7 @@ import { createSessionHarness, annotateTranscript, participantSpeakers, EVENT_TY
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const state = { session: null, config: null, events: [], sessionHarness: null, macroPhase: null, agentTrace: [], agentExecution: null, time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoRuntime: null, pendingMujocoAction: null, mujocoCommandKey: null, pendingMujocoSpeaker: null, mujocoSpeakerKey: null };
+state.currentBlackboard = null;
 
 const formatTime = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
@@ -18,6 +19,14 @@ const METRIC_LABELS = Object.freeze({
   diversity: ["收束", "平衡", "发散"],
   flow: ["停滞", "过渡", "流动"]
 });
+const POD_LABEL_LAYOUTS = Object.freeze({
+  1: [0], 2: [1, 5], 3: [1, 5, 0], 4: [1, 5, 2, 4],
+  5: [1, 5, 2, 4, 0], 6: [0, 1, 2, 3, 4, 5]
+});
+const POD_LABEL_POSITIONS = Object.freeze([
+  { x: 50, y: 16 }, { x: 30, y: 29 }, { x: 28, y: 68 },
+  { x: 50, y: 78 }, { x: 72, y: 68 }, { x: 70, y: 29 }
+]);
 let liveSensing = null;
 
 const MEMBER_LAYOUTS = {
@@ -53,7 +62,17 @@ function renderStatic() {
   $("#scrubber").max = state.session.duration;
   $("#participants").innerHTML = `<div class="participation-bar" aria-label="成员发言比例">${state.session.participants.map((p) => `<i id="segment-${p.id}" style="--participant-color:${p.color};width:0%"></i>`).join("")}</div><div class="participation-legend">${state.session.participants.map((p) => `<span><b style="background:${p.color}"></b>${escapeHtml(p.id)} · ${escapeHtml(p.name)} <strong id="share-${p.id}">0% · 0轮</strong></span>`).join("")}</div>`;
   renderEmbodiedMembers();
+  renderMujocoParticipantLabels();
   renderConfig();
+}
+
+function renderMujocoParticipantLabels() {
+  const participants = state.session?.participants?.slice(0, 6) || [];
+  const layout = POD_LABEL_LAYOUTS[participants.length] || POD_LABEL_LAYOUTS[5];
+  $("#mujocoParticipantLabels").innerHTML = participants.map((participant, index) => {
+    const position = POD_LABEL_POSITIONS[layout[index]];
+    return `<span style="--label-x:${position.x}%;--label-y:${position.y}%">${escapeHtml(participant.id)}</span>`;
+  }).join("");
 }
 
 function renderEmbodiedMembers() {
@@ -122,8 +141,10 @@ function configureMujocoParticipants() {
 }
 
 function syncMujocoPhase(blackboard) {
-  if (state.macroPhase === blackboard.phase) return;
-  state.macroPhase = blackboard.phase;
+  renderMujocoCandidates(blackboard);
+  const journeyKey = `${blackboard.phase}:${blackboard.discussionStage || "none"}`;
+  if (state.macroPhase === journeyKey) return;
+  state.macroPhase = journeyKey;
   if (blackboard.phase === SESSION_PHASES.ICEBREAKER) {
     state.mujocoRuntime?.setScenario("icebreaker");
   }
@@ -131,30 +152,55 @@ function syncMujocoPhase(blackboard) {
   if ([SESSION_PHASES.VOTING, SESSION_PHASES.RESULT_CONFIRMATION, SESSION_PHASES.CLOSED].includes(blackboard.phase)) {
     state.mujocoRuntime?.setScenario("voting");
   }
+  if (!state.playing) renderMujocoPausedStatus(blackboard);
+}
+
+function renderMujocoPausedStatus(blackboard) {
+  const phaseLabel = blackboard.phase === SESSION_PHASES.ICEBREAKER ? "破冰"
+    : blackboard.phase === SESSION_PHASES.DISCUSSION ? `讨论 · ${blackboard.discussionStage === "converge" ? "收敛" : "发散"}`
+      : blackboard.phase === SESSION_PHASES.BALLOT_PREPARATION ? "讨论收敛 · 整理候选"
+        : [SESSION_PHASES.VOTING, SESSION_PHASES.RESULT_CONFIRMATION].includes(blackboard.phase) ? "投票"
+          : "等待开始";
+  $("#mujocoStrategy").textContent = `${phaseLabel} · 等待播放`;
+}
+
+function renderMujocoCandidates(blackboard) {
+  const panel = $("#mujocoCandidates");
+  const visible = [SESSION_PHASES.VOTING, SESSION_PHASES.RESULT_CONFIRMATION].includes(blackboard.phase);
+  panel.hidden = !visible;
+  if (!visible) {
+    panel.innerHTML = "";
+    return;
+  }
+  const items = blackboard.candidates?.items?.slice(0, 4) || [];
+  panel.innerHTML = `<small>${blackboard.phase === SESSION_PHASES.RESULT_CONFIRMATION ? "投票结果" : "当前投票方案"}</small><div>${items.length
+    ? items.map((item, index) => `<span><b>${String.fromCharCode(65 + index)}</b>${escapeHtml(item.label)}</span>`).join("")
+    : "<span>候选方案整理中</span>"}</div>`;
 }
 
 function setActiveOrchestration(blackboard) {
   const activeOwner = blackboard.phase === SESSION_PHASES.ICEBREAKER ? "icebreaker"
     : blackboard.phase === SESSION_PHASES.DISCUSSION ? "discussion"
-      : blackboard.phase === SESSION_PHASES.BALLOT_PREPARATION ? "synthesis"
+      : blackboard.phase === SESSION_PHASES.BALLOT_PREPARATION ? "discussion"
         : [SESSION_PHASES.VOTING, SESSION_PHASES.RESULT_CONFIRMATION].includes(blackboard.phase) ? "voting"
           : "router";
   const positionLabels = {
     router: "等待会话 · 路由监听",
     icebreaker: "破冰 · Workflow 执行",
     discussion: `讨论 · ${blackboard.discussionStage === "converge" ? "收敛" : "发散"}（方案综合并行）`,
-    synthesis: "投票准备 · 冻结候选版本",
+    synthesis: "讨论 · 收敛（方案综合并行）",
     voting: blackboard.phase === SESSION_PHASES.RESULT_CONFIRMATION ? "结果确认" : "投票 · Workflow 执行"
   };
   $("#orchestrationPosition").textContent = `当前位置：${positionLabels[activeOwner]}`;
   let activeNode = null;
   $$("#agentOrchestration .node-card").forEach((node) => {
     node.classList.toggle("active", node.dataset.owner === activeOwner);
-    node.classList.toggle("parallel-active", blackboard.phase === SESSION_PHASES.DISCUSSION && node.dataset.owner === "synthesis");
+    node.classList.toggle("parallel-active", [SESSION_PHASES.DISCUSSION, SESSION_PHASES.BALLOT_PREPARATION].includes(blackboard.phase) && node.dataset.owner === "synthesis");
+    node.classList.toggle("discussion-converge", node.dataset.owner === "discussion" && blackboard.discussionStage === "converge");
     node.classList.toggle("monitoring", node.dataset.owner === "router" && activeOwner !== "router");
     if (node.dataset.owner === activeOwner) activeNode = node;
   });
-  $$("[data-discussion-stage]").forEach((tab) => tab.classList.toggle("active", blackboard.phase === SESSION_PHASES.DISCUSSION && tab.dataset.discussionStage === blackboard.discussionStage));
+  $$("[data-discussion-stage]").forEach((tab) => tab.classList.toggle("active", [SESSION_PHASES.DISCUSSION, SESSION_PHASES.BALLOT_PREPARATION].includes(blackboard.phase) && tab.dataset.discussionStage === blackboard.discussionStage));
   if (activeNode) requestAnimationFrame(() => {
     const map = $("#agentOrchestration");
     const mapRect = map.getBoundingClientRect();
@@ -170,7 +216,9 @@ function candidateInformation(blackboard = state.sessionHarness?.blackboard) {
 }
 
 function renderProtocolDecision(blackboard, fallbackEvent, eventIndex) {
-  $(".state-block").hidden = true;
+  const discussionOwned = blackboard.phase === SESSION_PHASES.BALLOT_PREPARATION;
+  $(".state-block").hidden = !discussionOwned;
+  $("#stageCriteria").hidden = !discussionOwned;
   const copy = {
     [SESSION_PHASES.WAITING]: { owner: "阶段路由 Agent", status: "等待开始", title: "等待有效会话事件", reason: "当前只有会话基线，尚未检测到破冰或参与者发言。", next: "保持空状态，等待第一条有效事件", evidence: "尚无可用于阶段判断的事件" },
     [SESSION_PHASES.ICEBREAKER]: { owner: "破冰 Workflow", status: "流程执行中", title: "运行击鼓传花", reason: "阶段路由 Agent 已调用确定性的破冰流程，MooTu 正在通过 Pod 灯光接力选择首位发言者。", next: "等待被选参与者完成第一轮有效发言", evidence: "检测到击鼓传花或 Pod 接力事件" },
@@ -182,9 +230,16 @@ function renderProtocolDecision(blackboard, fallbackEvent, eventIndex) {
   $("#decisionTitle").textContent = copy.title;
   $("#decisionReason").textContent = copy.reason;
   $("#followUp").textContent = copy.next;
-  clearMetric("participation", METRIC_LABELS.participation);
-  clearMetric("diversity", METRIC_LABELS.diversity);
-  clearMetric("flow", METRIC_LABELS.flow);
+  if (discussionOwned && fallbackEvent) {
+    setMetric("participation", fallbackEvent.metrics.participation, METRIC_LABELS.participation, "converge");
+    setMetric("diversity", fallbackEvent.metrics.diversity, METRIC_LABELS.diversity, "converge");
+    setMetric("flow", fallbackEvent.metrics.flow, METRIC_LABELS.flow, "converge");
+    renderStageCriteria({ ...fallbackEvent, stage: "converge" }, blackboard.sessionTime);
+  } else {
+    clearMetric("participation", METRIC_LABELS.participation);
+    clearMetric("diversity", METRIC_LABELS.diversity);
+    clearMetric("flow", METRIC_LABELS.flow);
+  }
   const action = state.config.core.strategies.observe;
   $("#robot").classList.toggle("intervening", blackboard.phase !== SESSION_PHASES.WAITING && blackboard.phase !== SESSION_PHASES.CLOSED);
   orientRobotTo(null);
@@ -202,6 +257,7 @@ function setTime(time) {
   $("#currentTime").textContent = formatPresentationTime(state.time);
   const event = eventAt(state.time);
   const blackboard = state.sessionHarness.setTime(state.time, event.stage);
+  state.currentBlackboard = blackboard;
   setActiveOrchestration(blackboard);
   const eventIndex = state.events.indexOf(event);
   const previousEvent = state.activeEventIndex == null ? null : state.events[state.activeEventIndex];
@@ -391,6 +447,7 @@ function syncMujocoPlayback() {
   $("#mujocoScreen").classList.toggle("playing", state.playing);
   const speakers = state.session?.participants?.length || 0;
   setMujocoStatus(state.playing ? "MuJoCo 仿真正在运行" : "MuJoCo 仿真已暂停", `${speakers} 位发言人 · ${speakers} 个 Pod 一一对应`, state.playing);
+  if (!state.playing && state.currentBlackboard) renderMujocoPausedStatus(state.currentBlackboard);
 }
 
 async function initBrowserMujoco() {
@@ -477,6 +534,7 @@ function renderToolTrace(trace = state.agentTrace) {
 
 function renderDecision(event, eventIndex, time) {
   $(".state-block").hidden = false;
+  renderStageCriteria(event, time);
   const action = state.config.core.strategies[event.strategy];
   const intervening = event.strategy !== "observe";
   $("#decisionTitle").textContent = event.title;
@@ -528,6 +586,21 @@ function renderDecision(event, eventIndex, time) {
   $("#jsonOutput").textContent = JSON.stringify({ timestamp: formatPresentationTime(event.time), source_timestamp: formatTime(event.time), playback_speed: timelineSpeed(), runtime: { architecture: "session-harness+pi", event_log_count: state.sessionHarness.eventLog.length, tool_trace: state.agentTrace, execution: state.agentExecution }, blackboard: state.sessionHarness.blackboard, agent_views: { discussion: state.sessionHarness.getAgentView("discussion_facilitator"), synthesis: state.sessionHarness.getAgentView("candidate_synthesis") }, stage: event.stage, stage_control: { recommendation: event.stageRecommendation, consecutive_votes: event.stageVotes }, observation: { evidence: event.evidence, missing_evidence: gaps }, assessment: event.metrics, decision: { source: event.decisionSource, intervene: intervening, strategy: event.strategy, target: event.target, reason: event.reason, confidence: event.confidence, expected_effect: event.expectedEffect, selection_margin: event.selectionMargin, candidate_evaluation: event.candidates }, memory: { previous_outcome: event.reflection, entries: eventIndex }, actions: { core: { ...renderedAction, display: information }, pod: event.target ? { target: event.target, ...pod } : pod }, follow_up: event.followUp }, null, 2);
 }
 
+function renderStageCriteria(event, time) {
+  const panel = $("#stageCriteria");
+  panel.hidden = false;
+  const progress = state.session.duration ? time / state.session.duration : 0;
+  const convergeCriteria = [["覆盖度", event.metrics.diversity >= 65], ["活性下降", event.metrics.flow < 58], ["时间到", progress >= 0.62]];
+  const divergeCriteria = [["覆盖不足", event.metrics.diversity < 48], ["出现新方向", event.strategy === "open_new_direction" || event.metrics.flow < 35]];
+  const recommendation = event.stageRecommendation === "diverge" ? "diverge" : event.stageRecommendation === "converge" || event.strategy === "prepare_convergence" ? "converge" : event.stage;
+  $("#stageSwitchDirection").textContent = "发散 ↔ 收敛";
+  const criterionRow = (direction, label, criteria) => `<div class="${recommendation === direction ? "recommended" : ""}"><strong>${label}</strong>${criteria.map(([name, met]) => `<span class="${met ? "met" : "pending"}"><i>${met ? "✓" : "·"}</i>${name}</span>`).join("")}</div>`;
+  $("#stageCriteriaList").innerHTML = `${criterionRow("converge", "发散 → 收敛", convergeCriteria)}${criterionRow("diverge", "收敛 → 发散", divergeCriteria)}`;
+  $("#stageCriteriaSummary").textContent = recommendation === "converge"
+    ? "覆盖足够、活性下降或时间到时，建议进入收敛"
+    : "覆盖不足或出现新方向时，建议返回发散";
+}
+
 function metricTarget(name, stage) {
   if (name === "diversity") return stage === "converge" ? 0 : 2;
   return 2;
@@ -541,8 +614,8 @@ function updateMetricGoal(name, activeIndex, stage, enableWarning = true, showTa
   row.classList.toggle("metric-warning", farFromTarget);
   row.dataset.goal = showTarget ? (stage === "converge" ? "收敛阶段目标" : "发散阶段目标") : "";
   [...scale.children].forEach((item, index) => {
-    item.classList.toggle("target", showTarget && index === targetIndex);
-    item.title = showTarget && index === targetIndex ? row.dataset.goal : "";
+    item.classList.remove("target");
+    item.title = "";
   });
 }
 
@@ -785,6 +858,7 @@ $("#liveBtn").addEventListener("click", async () => {
     state.playing = false;
     clearInterval(state.timer);
     $("#playBtn").textContent = "▶";
+    syncMujocoPlayback();
     await liveSensing.start();
     enterLiveSession();
     $("#videoPlaceholder").hidden = true;
@@ -810,6 +884,7 @@ $("#videoInput").addEventListener("change", async (event) => {
   $("#videoPlaceholder").hidden = true;
   $("#video").addEventListener("timeupdate", () => setTime($("#video").currentTime));
   $("#video").addEventListener("loadedmetadata", () => { state.session.duration = $("#video").duration; $("#video").playbackRate = timelineSpeed(); $("#scrubber").max = state.session.duration; $("#duration").textContent = formatPresentationTime(state.session.duration); });
+  $("#video").onended = () => { state.playing = false; $("#playBtn").textContent = "▶"; syncMujocoPlayback(); };
 });
 $("#transcriptInput").addEventListener("change", async (event) => {
   const file = event.target.files[0];

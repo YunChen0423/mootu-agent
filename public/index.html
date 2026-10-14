@@ -87,14 +87,16 @@
                   </div>
                   <div class="node-card" data-owner="voting"><small>结果确认</small><strong>投票 Workflow</strong><span>收票 · 平票可回退</span></div>
                 </div>
-                <div class="route-feedback" aria-label="允许的阶段回路">
-                  <span>静默不足：跳过破冰 → 讨论</span><span>破冰失败：↺ 破冰</span><span>出现新方向：↺ 发散</span><span>平票／低共识：↩ 方案综合</span>
-                </div>
               </div>
               <div class="decision-card">
                 <div><span class="section-label">本轮决策</span><h3 id="decisionTitle">保持观察</h3></div>
                 <p id="decisionReason">当前没有足够证据支持介入。</p>
                 <div class="follow-up"><span>下一步</span><b id="followUp">继续观察讨论变化</b></div>
+              </div>
+              <div id="stageCriteria" class="stage-criteria" hidden>
+                <div class="stage-criteria-head"><span>阶段切换判断</span><strong id="stageSwitchDirection">发散 ↔ 收敛</strong></div>
+                <div id="stageCriteriaList" class="stage-criteria-list"></div>
+                <p id="stageCriteriaSummary">持续观察覆盖度、近期活性与剩余时间</p>
               </div>
               <div class="state-block" hidden>
                 <div class="section-label">群体状态</div>
@@ -112,6 +114,9 @@
                 <canvas id="mujocoViewport" aria-label="MuJoCo 实时仿真画面"></canvas>
                 <div class="mujoco-placeholder"><span>MJ</span><strong>MooTu 互动演示</strong><small>正在载入破冰与投票场景</small></div>
                 <div class="mujoco-screen-bar"><span><i></i> INTERACTION DEMO</span><b id="mujocoStrategy">破冰启动</b></div>
+                <div id="mujocoParticipantLabels" class="mujoco-participant-labels" aria-label="参与者 Pod 对应关系"></div>
+                <div id="mujocoCandidates" class="mujoco-candidates" hidden></div>
+                <div id="agentSpeech" class="spoken-output" aria-live="polite"><strong id="agentSpeechText"></strong></div>
               </div>
               <div class="robot-visual">
                 <div id="memberRing" class="member-ring" aria-label="讨论成员位置"></div>
@@ -123,7 +128,6 @@
 
             <article class="panel output-panel">
               <div class="panel-head"><div><h2>文字与动作输出</h2></div><button id="jsonBtn" class="text-button">查看 JSON</button></div>
-              <div id="agentSpeech" class="spoken-output" aria-live="polite"><small>机器人语音 · 实际说出</small><strong id="agentSpeechText">保持安静</strong></div>
               <div id="coreActions" class="action-grid"></div>
               <div class="pod-section">
                 <div class="pod-row"><div id="podOrb" class="pod-orb"><i></i></div><div><strong id="podTarget">群体陪伴</strong><p id="podActions">恒温 · 无振动 · 无呼吸变化</p></div></div>

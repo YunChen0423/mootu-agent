@@ -20,7 +20,7 @@ test("nonlinear agent map replaces the redundant top stage strip", () => {
   assert.match(html, /id="agentOrchestration"/);
   assert.match(html, /当前位置：等待会话/);
   assert.match(html, /并行协作/);
-  assert.match(html, /出现新方向：↺ 发散/);
+  assert.doesNotMatch(html, /静默不足：跳过破冰|破冰失败：↺ 破冰|出现新方向：↺ 发散|平票／低共识/);
   assert.match(html, /破冰 Workflow/);
   assert.match(html, /投票 Workflow/);
   assert.match(html, /data-discussion-stage="diverge"/);
@@ -91,14 +91,17 @@ test("embodied display copy is generated from recent discussion context", () => 
 });
 
 test("spoken words and screen information are separate output surfaces", () => {
-  assert.match(html, /机器人语音 · 实际说出/);
+  assert.match(html, /id="mujocoScreen"[\s\S]*id="agentSpeech"/);
+  assert.ok(html.indexOf('id="agentSpeech"') < html.indexOf('class="panel output-panel"'));
   assert.match(app, /display: embodiment\.information/);
   assert.match(enhancements, /action\[data-channel="display"\]/);
+  assert.match(enhancements, /\.mujoco-screen \.spoken-output/);
 });
 
-test("group-state detail is hidden for non-discussion agents", () => {
+test("group-state detail follows discussion ownership, including ballot preparation convergence", () => {
   assert.match(html, /class="state-block" hidden/);
-  assert.match(app, /renderProtocolDecision[\s\S]*\$\("\.state-block"\)\.hidden = true/);
+  assert.match(app, /discussionOwned = blackboard\.phase === SESSION_PHASES\.BALLOT_PREPARATION/);
+  assert.match(app, /\$\("\.state-block"\)\.hidden = !discussionOwned/);
   assert.match(app, /renderDecision[\s\S]*\$\("\.state-block"\)\.hidden = false/);
 });
 
@@ -113,7 +116,7 @@ test("desktop layout gives MuJoCo the wide upper area and moves judgment below i
   assert.match(enhancements, /\.output-panel \{ grid-column: 2; grid-row: 1; height: 100%/);
   assert.match(enhancements, /grid-column: 1 \/ 3;\s*grid-row: 2/);
   assert.match(enhancements, /\.reasoning-panel \.agent-modules[\s\S]*min-width: 0/);
-  assert.match(enhancements, /\.reasoning-panel \.route-feedback \{ min-width: 0/);
+  assert.doesNotMatch(html, /class="route-feedback"/);
   assert.match(enhancements, /grid-template-columns: minmax\(82px, \.72fr\) minmax\(0, 1\.28fr\)/);
 });
 
@@ -222,8 +225,12 @@ test("the current transcript speaker drives MooTu toward the matching pod", () =
 });
 
 test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry stable", () => {
-  assert.match(browserMujoco, /PASSIVE_APPROACH_RATIO = 0\.22/);
   assert.match(browserMujoco, /INVITE_APPROACH_RATIO = 0\.34/);
+  assert.match(browserMujoco, /attentionMode === "invite" \? "moving" : "listening"/);
+  assert.match(browserMujoco, /if \(attentionMode !== "invite"\) centerRobot\(\)/);
+  assert.match(browserMujoco, /isDiscussionNavigation = [^;]*attentionMode === "invite"/);
+  assert.match(browserMujoco, /const centerRobot/);
+  assert.match(browserMujoco, /setScenario[\s\S]*centerRobot\(\)/);
   assert.match(browserMujoco, /demo\.action\?\.posture\?\.includes\("前倾"\)/);
   assert.match(browserMujoco, /mesh\.userData\.geometryKey !== key/);
   assert.match(browserMujoco, /setColor\(candidateGeomIds\[0\], \[0, 0, 0, 0\]\)/);
@@ -238,11 +245,45 @@ test("all orchestrators remain visible and the active owner is highlighted", () 
   assert.match(enhancements, /\.node-card\.active/);
   assert.match(enhancements, /\.node-card\.monitoring/);
   assert.match(app, /scrollLeft/);
+  assert.match(app, /BALLOT_PREPARATION \? "discussion"/);
+  assert.match(enhancements, /\.node-card\[data-owner="discussion"\]\.discussion-converge/);
 });
 
-test("group-state dimensions only appear during the discussion facilitator phase", () => {
+test("MuJoCo overlays participant labels, speech, and voting candidates", () => {
+  assert.match(html, /id="mujocoParticipantLabels"/);
+  assert.match(html, /id="mujocoCandidates"/);
+  assert.match(app, /function renderMujocoParticipantLabels/);
+  assert.match(app, /function renderMujocoCandidates/);
+  assert.match(app, /当前投票方案/);
+  assert.match(enhancements, /\.mujoco-participant-labels span/);
+  assert.match(enhancements, /\.mujoco-candidates/);
+  assert.match(app, /function renderMujocoPausedStatus/);
+  assert.match(app, /讨论 · \$\{blackboard\.discussionStage/);
+});
+
+test("stage-switch evidence is shown compactly during discussion", () => {
+  assert.match(html, /id="stageCriteria"[^>]*hidden/);
+  assert.match(html, /覆盖度/);
+  assert.match(app, /function renderStageCriteria/);
+  assert.match(app, /活性下降/);
+  assert.match(app, /时间到/);
+  assert.match(enhancements, /\.stage-criteria/);
+});
+
+test("group state uses plain labels and a flashing warning background", () => {
+  assert.match(enhancements, /\.state-scale,[\s\S]*background: transparent !important/);
+  assert.match(enhancements, /\.metric-row\.metric-warning[\s\S]*animation: metric-alert/);
+  assert.match(enhancements, /@keyframes metric-alert/);
+  assert.match(app, /item\.classList\.remove\("target"\)/);
+});
+
+test("the discussion preview cannot be compressed upward", () => {
+  assert.match(enhancements, /\.input-panel \.video-stage \{ flex: 0 0 auto/);
+});
+
+test("group-state dimensions only appear while the discussion facilitator owns the phase", () => {
   assert.match(html, /class="state-block" hidden/);
-  assert.match(app, /function renderProtocolDecision[\s\S]*\$\("\.state-block"\)\.hidden = true/);
+  assert.match(app, /function renderProtocolDecision[\s\S]*discussionOwned/);
   assert.match(app, /function renderDecision[\s\S]*\$\("\.state-block"\)\.hidden = false/);
 });
 

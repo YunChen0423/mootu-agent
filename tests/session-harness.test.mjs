@@ -32,6 +32,9 @@ test("session harness maps five participants to five pods and derives the full j
   assert.equal(harness.setTime(24).phase, SESSION_PHASES.ICEBREAKER);
   assert.equal(harness.setTime(55).phase, SESSION_PHASES.DISCUSSION);
   assert.equal(harness.setTime(894).phase, SESSION_PHASES.BALLOT_PREPARATION);
+  assert.equal(harness.blackboard.activeAgent, "discussion_facilitator");
+  assert.equal(harness.blackboard.discussionStage, "converge");
+  assert.deepEqual(harness.blackboard.coactiveAgents, ["discussion_facilitator", "candidate_synthesis"]);
   assert.equal(harness.setTime(904).phase, SESSION_PHASES.VOTING);
   assert.equal(harness.setTime(964).phase, SESSION_PHASES.RESULT_CONFIRMATION);
   assert.equal(harness.setTime(1013).phase, SESSION_PHASES.CLOSED);
