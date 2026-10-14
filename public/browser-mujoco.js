@@ -497,9 +497,9 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
       headPitch = (Math.PI / 36) * Math.sin(elapsed * 2.5);
       neckSide = (7 * Math.PI / 180) * Math.sin(elapsed * 1.2);
     } else if (demo.mode === "voting" && ["waiting", "open"].includes(demo.phase)) {
-      headYaw = 0.10 * Math.sin(elapsed * 0.72);
-      headPitch = 0.035 + 0.025 * Math.sin(elapsed * 1.05);
-      neckSide = 0.035 * Math.sin(elapsed * 0.72);
+      headYaw = 0.18 * Math.sin(elapsed * 0.72);
+      headPitch = 0.055 + 0.040 * Math.sin(elapsed * 1.05);
+      neckSide = 0.065 * Math.sin(elapsed * 0.72);
     } else if (demo.mode === "voting" && demo.phase === "result") {
       const winnerSide = demo.winner == null ? 0 : demo.winner % 2 === 0 ? -1 : 1;
       const [tx, ty] = [winnerSide * 0.013, 0.020];
