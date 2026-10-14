@@ -424,11 +424,6 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
         const counts = demo.voteLabels.map((_, index) => demo.votePlan.filter((vote) => vote === index).length);
         demo.winner = demo.voteWinner ?? (counts.length ? counts.indexOf(Math.max(...counts)) : null);
       }
-    } else if (demo.mode === "voting" && elapsed >= 5) {
-      demo.phase = "open";
-      demo.phaseStarted = now;
-      demo.votes.fill(null);
-      demo.winner = null;
     }
   };
   const updateDemoVisuals = (now) => {
@@ -501,6 +496,10 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
       headYaw = (Math.PI / 10) * Math.sin(elapsed * 1.8);
       headPitch = (Math.PI / 36) * Math.sin(elapsed * 2.5);
       neckSide = (7 * Math.PI / 180) * Math.sin(elapsed * 1.2);
+    } else if (demo.mode === "voting" && ["waiting", "open"].includes(demo.phase)) {
+      headYaw = 0.10 * Math.sin(elapsed * 0.72);
+      headPitch = 0.035 + 0.025 * Math.sin(elapsed * 1.05);
+      neckSide = 0.035 * Math.sin(elapsed * 0.72);
     } else if (demo.mode === "voting" && demo.phase === "result") {
       const winnerSide = demo.winner == null ? 0 : demo.winner % 2 === 0 ? -1 : 1;
       const [tx, ty] = [winnerSide * 0.013, 0.020];

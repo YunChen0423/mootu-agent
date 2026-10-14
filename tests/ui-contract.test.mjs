@@ -241,6 +241,9 @@ test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry s
   assert.match(browserMujoco, /INVITE_APPROACH_RATIO = 0\.18/);
   assert.match(app, /lightsReady: blackboard\.ballotLightsReady/);
   assert.match(browserMujoco, /demo\.phase === "waiting"/);
+  assert.match(browserMujoco, /\["waiting", "open"\]\.includes\(demo\.phase\)/);
+  assert.match(browserMujoco, /headYaw = 0\.10 \* Math\.sin\(elapsed \* 0\.72\)/);
+  assert.doesNotMatch(browserMujoco, /demo\.mode === "voting" && elapsed >= 5/);
   assert.match(browserMujoco, /shouldMoveForInvitation \? "moving" : "turning"/);
   assert.match(browserMujoco, /approachedSpeakers/);
   assert.match(browserMujoco, /INVITATION_APPROACH_DURATION = 1\.2/);
