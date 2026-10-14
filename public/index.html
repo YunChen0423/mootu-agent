@@ -143,15 +143,30 @@
 
     <dialog id="jsonDialog"><div class="dialog-head"><h2>结构化决策</h2><button data-close>×</button></div><pre id="jsonOutput"></pre></dialog>
     <dialog id="configDialog"><div class="dialog-head"><div><p class="eyebrow">EDITABLE SYSTEM</p><h2>动作与阈值配置</h2></div><button data-close>×</button></div><p class="dialog-note">这些内容来自你提供的 Core / Pod 交互图。修改配置文件即可扩展，无需改动判断核心。</p><div id="configContent"></div></dialog>
-    <dialog id="agentDetailsDialog" class="agent-details-dialog"><div class="dialog-head"><div><p class="eyebrow">AGENT ARCHITECTURE</p><h2>Agent 体系设计逻辑</h2></div><button data-close>×</button></div><div class="agent-details-grid">
-      <section><span>01 · 总体编排</span><h3>全局 Harness 管阶段，专用 Agent 管任务</h3><p>原始事件日志先进入 Session Blackboard。阶段路由 Agent 只负责校验状态切换；讨论促进与方案综合并行；破冰和投票是受路由调用、可审计的 Workflow。</p></section>
-      <section><span>02 · 路由与切换</span><h3>事件触发 + 防抖 + 守卫条件</h3><ul><li>开场静默达到阈值 → 破冰 Workflow</li><li>连续两次收敛建议 → 发散切换到收敛</li><li>MooTu/Core 明确提示用 Pod 投票 → 投票 Workflow</li><li>候选快照未形成时禁止正式收票；投票完成后进入结果确认</li></ul></section>
-      <section><span>03 · 分工</span><h3>讨论判断与方案整理分离</h3><ul><li>讨论促进 Agent：参与、发散、流动、邀请和阶段提示</li><li>方案综合 Agent：持续归类关键词，冻结可投票候选</li><li>破冰 Workflow：灯光接力与首次发言邀请</li><li>投票 Workflow：候选展示、Pod 收票、计数与结果确认</li></ul></section>
-      <section><span>04 · 输入与输出</span><h3>只读可观察证据，输出结构化动作</h3><p>输入包括逐字稿、说话人、时间、现场/设备事件、参与与流动指标。输出包括阶段、策略、目标成员、Core 移动/朝向/姿态/语音/屏幕，以及 Pod 灯光、温度、振动与呼吸反馈。</p></section>
-      <section><span>05 · 记忆</span><h3>事件日志、共享黑板与局部工作记忆</h3><ul><li>Event Log：不可变的事实来源</li><li>Blackboard：当前阶段、参与者、候选快照和票仓</li><li>Agent 工作记忆：最近 8 个观察、上一动作、预期效果和缺失证据</li><li>候选方案进入投票后冻结，避免继续漂移</li></ul></section>
-      <section><span>06 · Tools 与 Skills</span><h3>按阶段发现 Skill，按顺序调用 Tool</h3><p>Skill Registry 根据当前 phase 暴露 phase-routing、icebreaker-protocol、discussion-facilitation、candidate-synthesis 或 voting-protocol。讨论 Agent 的 Tool 链依次读取窗口、参与度、流动性、发散度、记忆与冷却，再评估候选、生成动作、分发 Core/Pod 指令并记录预期效果。</p></section>
-      <section class="agent-details-wide"><span>07 · 决策边界</span><h3>DeepSeek 提案，确定性 Harness 最终批准</h3><p>模型负责理解具体语义、总结方案和生成自然语言；Harness 负责策略白名单、证据完整性、收益与打断成本、置信度、冷却时间、阶段防抖和次数上限。模型不能绕过这些守卫直接控制硬件。</p></section>
-    </div></dialog>
+    <dialog id="agentDetailsDialog" class="agent-details-dialog"><div class="dialog-head"><div><p class="eyebrow">SYSTEM ARCHITECTURE · METHODS FIGURE</p><h2>多 Agent 编排与数据流</h2></div><button data-close>×</button></div>
+      <figure class="architecture-figure">
+        <figcaption>图 1 · 事件驱动的阶段路由、并行推理与具身执行</figcaption>
+        <div class="architecture-inputs">
+          <section class="architecture-node source"><small>OBSERVATION</small><h3>原始事件日志</h3><p>逐字稿 · 说话人 · 时间 · 现场/设备事件</p></section>
+          <i>→</i>
+          <section class="architecture-node memory"><small>SHARED MEMORY</small><h3>Session Blackboard</h3><p>阶段 · 参与者 · 候选快照 · 票仓 · 最近事件</p></section>
+          <i>→</i>
+          <section class="architecture-node router"><small>GLOBAL HARNESS</small><h3>阶段路由 Agent</h3><p><b>Tool</b> phase guard / cooldown / event matcher</p><p><b>输出</b> workflow 调度与阶段状态</p></section>
+        </div>
+        <div class="architecture-branch-label"><span>按事件与守卫条件路由</span></div>
+        <div class="architecture-branches">
+          <section class="architecture-node workflow"><small>OPTIONAL WORKFLOW</small><h3>破冰 Workflow</h3><dl><dt>输入</dt><dd>开场静默、Pod 状态</dd><dt>Tools</dt><dd>灯光接力、选择 A、等待有效发言</dd><dt>记忆</dt><dd>尝试次数与完成状态</dd><dt>输出</dt><dd>首次发言入口</dd></dl></section>
+          <section class="architecture-parallel"><span>PARALLEL LOOP</span><div>
+            <section class="architecture-node agent"><small>DISCUSSION AGENT</small><h3>讨论促进 Agent</h3><dl><dt>输入</dt><dd>60s 窗口、参与/流动/发散指标</dd><dt>Tools</dt><dd>observe → evaluate → act → reflect</dd><dt>记忆</dt><dd>最近 8 个观察、两次邀请、语音预算</dd><dt>输出</dt><dd>发散/收敛、目标成员、Core/Pod 动作</dd></dl></section>
+            <b>⇄</b>
+            <section class="architecture-node agent synthesis"><small>SYNTHESIS AGENT</small><h3>方案综合 Agent</h3><dl><dt>输入</dt><dd>讨论窗口与主题语义</dd><dt>Tools</dt><dd>聚类、去重、关键词命名、版本冻结</dd><dt>记忆</dt><dd>候选版本与来源事件</dd><dt>输出</dt><dd>≤8 字可投票方案</dd></dl></section>
+          </div></section>
+          <section class="architecture-node workflow"><small>TERMINAL WORKFLOW</small><h3>投票 Workflow</h3><dl><dt>输入</dt><dd>冻结候选、Pod 选择事件</dd><dt>Tools</dt><dd>展示、收票、验票、计数、公布</dd><dt>记忆</dt><dd>一次选择、票数与胜出结果</dd><dt>输出</dt><dd>彩色 Pod 状态与最终结果</dd></dl></section>
+        </div>
+        <div class="architecture-outputs"><i>↓</i><section class="architecture-node execution"><small>EMBODIED EXECUTION</small><h3>Core + Pod</h3><p>移动 · 朝向 · 姿态 · 最多 5 句语音 · 屏幕信息 · 灯光/温度/振动/呼吸</p></section></div>
+        <aside class="architecture-guard"><strong>确定性守卫</strong><span>DeepSeek 负责语义提案；Harness 负责证据完整性、白名单、冷却、防抖、两次邀请上限、五句语音上限与动画事务锁。邀请动画完成前，阶段与动作请求进入等待队列。</span></aside>
+      </figure>
+    </dialog>
     <div id="toast" class="toast"></div>
     <script type="module" src="/app.js"></script>
   </body>

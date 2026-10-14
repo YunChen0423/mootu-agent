@@ -175,15 +175,41 @@ export function runAgent({ transcript, participants = [], duration, config, sema
 
   let previousStage = "diverge";
   let lastInterventionTime = -Infinity;
+  let lastInvitationTime = -Infinity;
+  let invitationCount = 0;
+  let robotUtteranceCount = 0;
   const events = observations.map((observation, index) => {
     const { time, suggestedStage: stage } = observation;
     const participation = participationAt(sorted, speakers, time, thresholds.window_seconds, discussionStart);
     const flow = flowAt(sorted, time, thresholds.window_seconds, thresholds, discussionStart);
     const diversity = diversityAt(sorted, time, thresholds.window_seconds, discussionStart);
-    const decision = index === 0
+    let decision = index === 0
       ? { strategy: "observe", title: "等待讨论自然启动", followUp: "继续收集发言与想法证据" }
       : chooseDecision({ time, stage, previousStage, participation, diversity, flow, thresholds, lastInterventionTime });
-    if (decision.strategy !== "observe") lastInterventionTime = time;
+    const invitationLimit = thresholds.max_invitation_count || 2;
+    const invitationCooldown = thresholds.quiet_invitation_cooldown_seconds || thresholds.intervention_cooldown_seconds;
+    const secondInvitationDue = invitationCount === 1
+      && stage === previousStage
+      && time - lastInvitationTime >= invitationCooldown
+      && observation.diagnostics.discussion_elapsed_seconds >= thresholds.quiet_member_seconds * 2;
+    if (secondInvitationDue) {
+      decision = { strategy: "invite_quiet_member", title: `第二次邀请 ${participation.quietTarget}`, followUp: "完成第二次低压力邀请后继续当前阶段", target: participation.quietTarget };
+    }
+    if (decision.strategy === "invite_quiet_member" && invitationCount >= invitationLimit) {
+      decision = { strategy: "observe", title: "两次邀请已完成", followUp: "继续观察，不再点名邀请" };
+    }
+    const utteranceLimit = thresholds.max_robot_utterances || 5;
+    if (decision.strategy !== "observe" && robotUtteranceCount >= utteranceLimit) {
+      decision = { strategy: "observe", title: "语音预算已用完", followUp: "改用朝向、灯光与屏幕信息反馈" };
+    }
+    if (decision.strategy !== "observe") {
+      lastInterventionTime = time;
+      robotUtteranceCount += 1;
+    }
+    if (decision.strategy === "invite_quiet_member") {
+      lastInvitationTime = time;
+      invitationCount += 1;
+    }
     const evidence = index === 0
       ? ["讨论尚未开始，Agent 暂不介入。"]
       : evidenceFor({ participation, diversity, flow, stage, target: decision.target, semantic: semanticAt(semantic, time) });

@@ -74,7 +74,9 @@
   "thresholds": {
     "window_seconds": 60,
     "quiet_member_seconds": 70,
-    "quiet_invitation_cooldown_seconds": 180,
+    "quiet_invitation_cooldown_seconds": 70,
+    "max_invitation_count": 2,
+    "max_robot_utterances": 5,
     "convergence_prompt_cooldown_seconds": 135,
     "max_convergence_prompts": 1,
     "silence_thinking_seconds": 10,

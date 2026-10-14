@@ -242,8 +242,11 @@ test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry s
   assert.match(browserMujoco, /shouldMoveForInvitation \? "moving" : "turning"/);
   assert.match(browserMujoco, /movedInviteTargets/);
   assert.match(browserMujoco, /INVITATION_HOLD_MS = 5400/);
+  assert.match(browserMujoco, /MAX_INVITATION_ANIMATIONS = 2/);
   assert.match(browserMujoco, /pendingScenario/);
+  assert.match(browserMujoco, /pendingAction/);
   assert.match(browserMujoco, /invitationInProgress/);
+  assert.match(browserMujoco, /setAction = \(action, \{ force = false \} = \{\}\)/);
   assert.match(browserMujoco, /kind: "invite-return"/);
   assert.match(browserMujoco, /INVITATION_RETURN_DURATION = 3\.2/);
   assert.match(browserMujoco, /邀请 \$\{speaker\} 发言/);
@@ -324,11 +327,22 @@ test("MuJoCo overlays participant labels, speech, and voting candidates", () => 
 test("agent judgment exposes the full orchestration design on demand", () => {
   assert.match(html, /id="agentDetailsBtn"[^>]*>查看详情/);
   assert.match(html, /id="agentDetailsDialog"/);
-  assert.match(html, /路由与切换/);
-  assert.match(html, /输入与输出/);
-  assert.match(html, /Tools 与 Skills/);
-  assert.match(html, /事件日志、共享黑板与局部工作记忆/);
+  assert.match(html, /class="architecture-figure"/);
+  assert.match(html, /原始事件日志/);
+  assert.match(html, /Session Blackboard/);
+  assert.match(html, /阶段路由 Agent/);
+  assert.match(html, /讨论促进 Agent/);
+  assert.match(html, /方案综合 Agent/);
+  assert.match(html, /两次邀请上限、五句语音上限与动画事务锁/);
+  assert.match(enhancements, /\.architecture-branches/);
   assert.match(app, /agentDetailsDialog"\)\.showModal/);
+});
+
+test("robot speech is globally bounded to five utterances", () => {
+  assert.match(app, /MAX_ROBOT_UTTERANCES = 5/);
+  assert.match(app, /function boundedRobotUtterance/);
+  assert.match(app, /spokenUtteranceKeys\.size >= limit/);
+  assert.match(app, /spokenUtteranceKeys\.clear/);
 });
 
 test("stage-switch evidence is shown compactly during discussion", () => {

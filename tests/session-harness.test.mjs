@@ -117,6 +117,19 @@ test("Core announcing independent Pod ballots enters voting on the same utteranc
   assert.equal(harness.blackboard.activeWorkflow, "voting");
 });
 
+test("the fixed three-candidate sentence enters voting and parses its options immediately", () => {
+  const fixedCue = annotateTranscript([
+    { start: 0, end: 8, speaker: "A", text: "我们把方向收一下。" },
+    { start: 20, end: 29, speaker: "MooTu", text: "那我们整理三个候选吧：一是感官集章，二是真实声音收集加 AI 合成，三是摊位角色秘密任务。" }
+  ]);
+  const harness = createSessionHarness({ transcript: fixedCue });
+  assert.equal(harness.setTime(19, "converge").phase, SESSION_PHASES.DISCUSSION);
+  const voting = harness.setTime(20, "converge");
+  assert.equal(voting.phase, SESSION_PHASES.VOTING);
+  assert.equal(voting.activeWorkflow, "voting");
+  assert.deepEqual(voting.candidates.items.map((item) => item.label), ["感官集章", "真实声音", "摊位角色秘密任务"]);
+});
+
 test("an explicit participant vote statement enters the voting workflow", () => {
   const spokenVote = annotateTranscript([
     ...transcript.slice(0, 8),

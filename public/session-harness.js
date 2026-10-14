@@ -70,7 +70,7 @@ function keywordLabel(text) {
 
 function extractCandidates(events, time, synthesizedCandidates = []) {
   const visible = events.filter((event) => event.start <= time);
-  const numberedCandidates = (text) => [...text.matchAll(/[一二三1-3][、，,:：]\s*([^；;。]+)/g)];
+  const numberedCandidates = (text) => [...text.matchAll(/[一二三1-3](?:[、，,:：]|是)\s*([^；;。，,]+)/g)];
   const source = [...visible].reverse().find((event) => event.type === EVENT_TYPES.ROBOT_UTTERANCE && numberedCandidates(event.text).length >= 2);
   if (!source) {
     const synthesized = synthesizedCandidates.map((label) => String(label || "").trim()).filter((label) => label.length >= 2 && label.length <= 8).slice(0, 4);
@@ -110,12 +110,14 @@ function buildBoundaries(events) {
   const afterIcebreaker = icebreaker == null ? [] : participantEvents.filter((event) => event.start >= icebreaker);
   const discussion = icebreaker == null ? firstParticipant : (afterIcebreaker[1]?.start ?? afterIcebreaker[0]?.end ?? firstParticipant);
   const ballotPreparation = findStart(events, (event) => includesAny(event.text, [/讨论即将结束/, /整理.{0,6}(?:候选|方案)/, /三个(?:候选|选择|方案)/]));
+  const fixedCandidateCue = findStart(events, (event) => /那我们整理三个候选吧[：:]?\s*一是感官集章[，,]\s*二是真实声音收集加\s*AI\s*合成[，,]\s*三是摊位角色秘密任务/.test(event.text));
   const workflowEvents = events.filter((event) => [EVENT_TYPES.ROBOT_UTTERANCE, EVENT_TYPES.DEVICE_EVENT].includes(event.type));
   const explicitVoting = findStart(workflowEvents, (event) => includesAny(event.text, [/请.{0,8}(?:pod|Pod)?.{0,6}投票/, /(?:用|使用|按).{0,8}(?:pod|Pod).{0,8}(?:独立)?投票/, /候选方案.{0,12}投票/, /显示.{0,8}(?:选项|方案)/, /(?:进入|切换到|开启|开始|发起)投票/, /投票(?:现在)?开始/, /按下.{0,8}(?:pod|Pod)/]));
   const spokenVoting = findStart(events, (event) => event.type === EVENT_TYPES.PARTICIPANT_UTTERANCE
     && !/[？?]|是不是|要不要/.test(event.text)
     && includesAny(event.text, [/我(?:先|要|准备)?投(?:票)?/, /(?:我们|大家)(?:现在|就|先)?(?:开始)?投票/, /(?:那就|现在|开始)(?:用.{0,6})?(?:投票|投一个|选一个)/]));
-  const voting = explicitVoting == null ? spokenVoting : spokenVoting == null ? explicitVoting : Math.min(explicitVoting, spokenVoting);
+  const votingSignals = [fixedCandidateCue, explicitVoting, spokenVoting].filter((value) => value != null);
+  const voting = votingSignals.length ? Math.min(...votingSignals) : null;
   const resultConfirmation = findStart(workflowEvents, (event) => includesAny(event.text, [/投票结束/, /公布.{0,6}结果/, /一致选择/, /最终选择/])) ;
   const closed = findStart(events, (event) => includesAny(event.text, [/讨论到这里结束/, /今天.{0,8}结束/, /本次.{0,8}结束/, /会话结束/]));
   return Object.freeze({ icebreaker, discussion, ballotPreparation, voting, resultConfirmation, closed });

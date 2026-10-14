@@ -14,6 +14,7 @@ test("sample discussion produces bounded metrics and a convergence transition", 
   const result = runAgent({ transcript: sample.transcript, participants: sample.participants, duration: sample.duration, config });
   assert.ok(result.events.length >= 5);
   assert.ok(result.events.some((event) => event.strategy === "prepare_convergence"));
+  assert.equal(result.events.filter((event) => event.strategy === "invite_quiet_member").length, 2);
   assert.equal(result.events[1].diagnostics.participation_basis, "70% speaking duration + 30% turn count");
   assert.ok(result.events[1].diagnostics.turn_counts);
   result.events.forEach((event) => {

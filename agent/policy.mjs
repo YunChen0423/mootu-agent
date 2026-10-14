@@ -71,6 +71,8 @@ export function sanitizeEvents(rawEvents, observations, participants, config) {
   const ids = new Set(participants.map((participant) => String(participant.id)));
   let lastIntervention = -Infinity;
   let lastInvitation = -Infinity;
+  let invitationCount = 0;
+  let robotUtteranceCount = 0;
   let lastConvergencePrompt = -Infinity;
   let convergencePromptCount = 0;
   let stage = "diverge";
@@ -87,6 +89,7 @@ export function sanitizeEvents(rawEvents, observations, participants, config) {
     }
     const cooldown = observation.time - lastIntervention < config.thresholds.intervention_cooldown_seconds;
     const invitationCooldown = observation.time - lastInvitation < (config.thresholds.quiet_invitation_cooldown_seconds || config.thresholds.intervention_cooldown_seconds);
+    const invitationLimit = config.thresholds.max_invitation_count || 2;
     const convergencePromptCooldown = observation.time - lastConvergencePrompt < (config.thresholds.convergence_prompt_cooldown_seconds || 30);
     const convergencePromptLimit = config.thresholds.max_convergence_prompts || 2;
     const selection = selectCandidate(raw, ids, config, { forceObserve: index === 0 || discussionWarmup, cooldown });
@@ -98,12 +101,18 @@ export function sanitizeEvents(rawEvents, observations, participants, config) {
     const quietEvidenceReady = observation.diagnostics.discussion_elapsed_seconds >= config.thresholds.quiet_member_seconds
       && observation.diagnostics.quiet_seconds >= config.thresholds.quiet_member_seconds
       && observation.diagnostics.quiet_share < 0.12;
-    if (selected.strategy === "invite_quiet_member" && invitationCooldown) {
+    if (selected.strategy === "invite_quiet_member" && invitationCount >= invitationLimit) {
+      selected = defaultObserve(config);
+      decisionReason = "本场两次邀请额度已经完成，避免继续点名干扰小组自主讨论。";
+    } else if (selected.strategy === "invite_quiet_member" && invitationCooldown) {
       selected = defaultObserve(config);
       decisionReason = "同类邀请仍在冷却期，避免反复点名打断讨论。";
     }
     if (selected.strategy === "observe" && invitationCooldown && quietEvidenceReady) {
       decisionReason = "同类邀请仍在冷却期，避免反复点名打断讨论。";
+    }
+    if (selected.strategy === "observe" && invitationCount >= invitationLimit && quietEvidenceReady) {
+      decisionReason = "本场两次邀请额度已经完成，避免继续点名干扰小组自主讨论。";
     }
     const contentHasConverged = stage === "converge" && (observation.diagnostics.recent_novelty <= 0.35 || observation.metrics.diversity < 60);
     const convergencePromptAvailable = !convergencePromptCooldown && convergencePromptCount < convergencePromptLimit;
@@ -117,7 +126,7 @@ export function sanitizeEvents(rawEvents, observations, participants, config) {
       selected = forcedCandidate("prepare_convergence", null, "提示开始收敛", "阶段已经切换到收敛，但讨论仍保持高发散，需要明确发出阶段提示。", "我们已经有几个方向了，现在开始收敛，一起比较各方案的价值、成本和可行性。");
       decisionReason = "Harness 检测到发散→收敛切换，必须向小组明确播报阶段目标。";
       forcedByHarness = true;
-    } else if (selected.strategy === "observe" && !cooldown && !invitationCooldown && quietEvidenceReady) {
+    } else if (selected.strategy === "observe" && invitationCount < invitationLimit && !cooldown && !invitationCooldown && quietEvidenceReady) {
       const target = observation.diagnostics.quiet_target;
       selected = forcedCandidate("invite_quiet_member", target, `邀请 ${target} 补充意见`, `${target} 在讨论开始后的观察窗口内参与明显偏低；即使讨论持续流动，也需要给其发言入口。`);
       decisionReason = `Harness 检测到 ${target} 在讨论开始后的持续低参与，不以全场是否有人讲话作为邀请条件。`;
@@ -127,8 +136,29 @@ export function sanitizeEvents(rawEvents, observations, participants, config) {
       decisionReason = "Harness 检测到收敛阶段仍保持高发散，主动发出聚焦提示。";
       forcedByHarness = true;
     }
-    if (selected.strategy !== "observe") lastIntervention = observation.time;
-    if (selected.strategy === "invite_quiet_member") lastInvitation = observation.time;
+    const secondInvitationDue = invitationCount === 1
+      && !justConverged
+      && !invitationCooldown
+      && observation.diagnostics.discussion_elapsed_seconds >= config.thresholds.quiet_member_seconds * 2;
+    if (secondInvitationDue) {
+      const target = observation.diagnostics.quiet_target;
+      selected = forcedCandidate("invite_quiet_member", target, `第二次邀请 ${target} 补充意见`, "演示编排要求在不连续打断的前提下完成第二次低压力邀请。", `${target}，我们也想听听你对现有方向的判断。`);
+      decisionReason = "第二次邀请已通过冷却校验；该邀请作为完整动画事务优先执行，后续动作排队等待。";
+      forcedByHarness = true;
+    }
+    const utteranceLimit = config.thresholds.max_robot_utterances || 5;
+    if (selected.strategy !== "observe" && robotUtteranceCount >= utteranceLimit) {
+      selected = defaultObserve(config);
+      decisionReason = "本场机器人语音已达到五句上限，后续只通过朝向、灯光与屏幕信息反馈。";
+    }
+    if (selected.strategy !== "observe") {
+      lastIntervention = observation.time;
+      robotUtteranceCount += 1;
+    }
+    if (selected.strategy === "invite_quiet_member") {
+      lastInvitation = observation.time;
+      invitationCount += 1;
+    }
     if (["prepare_convergence", "advance_decision"].includes(selected.strategy)) {
       lastConvergencePrompt = observation.time;
       convergencePromptCount += 1;

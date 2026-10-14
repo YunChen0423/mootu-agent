@@ -5,7 +5,7 @@ import { createSessionHarness, annotateTranscript, participantSpeakers, EVENT_TY
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const state = { session: null, config: null, events: [], sessionHarness: null, macroPhase: null, agentTrace: [], agentExecution: null, screenTopic: "", voteCandidates: [], time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoRuntime: null, pendingMujocoAction: null, mujocoCommandKey: null, speechTimer: null, lastSpeechText: "" };
+const state = { session: null, config: null, events: [], sessionHarness: null, macroPhase: null, agentTrace: [], agentExecution: null, screenTopic: "", voteCandidates: [], time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, spokenUtteranceKeys: new Set(), agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoRuntime: null, pendingMujocoAction: null, mujocoCommandKey: null, speechTimer: null, lastSpeechText: "" };
 state.currentBlackboard = null;
 
 const formatTime = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
@@ -33,6 +33,7 @@ const POD_LABEL_POSITIONS = Object.freeze([
   { x: 50, y: 78 }, { x: 72, y: 68 }, { x: 70, y: 29 }
 ]);
 const VOTE_OPTION_COLORS = Object.freeze(["#ff8c14", "#1aa6ff", "#68c95a", "#9a6bea"]);
+const MAX_ROBOT_UTTERANCES = 5;
 let liveSensing = null;
 
 const MEMBER_LAYOUTS = {
@@ -277,7 +278,10 @@ function renderProtocolDecision(blackboard, fallbackEvent, eventIndex) {
   orientRobotTo(null);
   $("#robotMood").textContent = `${copy.status} · ${copy.owner}`;
   const showDisplay = [SESSION_PHASES.VOTING, SESSION_PHASES.RESULT_CONFIRMATION].includes(blackboard.phase);
-  applyActionOutput(action, blackboard.currentEvent?.type === EVENT_TYPES.ROBOT_UTTERANCE ? blackboard.currentEvent.text : "", candidateInformation(blackboard), { showDisplay });
+  const scriptedSpeech = blackboard.currentEvent?.type === EVENT_TYPES.ROBOT_UTTERANCE
+    ? boundedRobotUtterance(`scripted:${blackboard.currentEvent.id}`, blackboard.currentEvent.text)
+    : "";
+  applyActionOutput(action, scriptedSpeech, candidateInformation(blackboard), { showDisplay });
   $("#podTarget").textContent = blackboard.activeWorkflow ? `${copy.owner} · ${blackboard.participants.length} 个 Pod` : "群体陪伴";
   $("#podActions").textContent = blackboard.activeWorkflow ? "流程受全局 Harness 校验" : "等待阶段事件";
   $("#podOrb").classList.toggle("active", Boolean(blackboard.activeWorkflow));
@@ -338,6 +342,7 @@ function enterLiveSession() {
   state.activeEventIndex = null;
   state.utteranceCache.clear();
   state.utteranceRequests.clear();
+  state.spokenUtteranceKeys.clear();
   $("#transcriptTitle").textContent = "现场实时逐字稿";
   $("#transcriptHint").textContent = "实时识别 · 超出后自动上滚";
   renderLiveTranscriptFeed();
@@ -445,6 +450,7 @@ function loadImportedTranscript(lines, fileName) {
   state.screenTopic = "讨论主题提炼中";
   state.utteranceCache.clear();
   state.utteranceRequests.clear();
+  state.spokenUtteranceKeys.clear();
   state.events = runAgent({ transcript: discussionTranscript(), participants: state.session.participants, duration: state.session.duration, discussionStart: state.sessionHarness.boundaries.discussion, config: state.config }).events;
   renderStatic();
   configureMujocoParticipants();
@@ -482,6 +488,16 @@ function applyActionOutput(action, utterance, information = utterance, { showDis
     state.speechTimer = setTimeout(() => $("#agentSpeech").classList.remove("show"), 2600);
   }
   $("#coreActions").innerHTML = Object.entries(action).filter(([key]) => key !== "label" && (key !== "display" || showDisplay)).map(([key, value]) => `<div class="action" data-channel="${key}"><span>${channelLabel(key)}</span><strong>${escapeHtml(key === "display" ? information : value || "—")}</strong></div>`).join("");
+}
+
+function boundedRobotUtterance(key, utterance) {
+  const value = String(utterance || "").trim();
+  if (!value) return "";
+  if (state.spokenUtteranceKeys.has(key)) return value;
+  const limit = state.config?.thresholds?.max_robot_utterances || MAX_ROBOT_UTTERANCES;
+  if (state.spokenUtteranceKeys.size >= limit) return "";
+  state.spokenUtteranceKeys.add(key);
+  return value;
 }
 
 function setMujocoStatus(status, detail, connected = false) {
@@ -533,6 +549,7 @@ function dispatchMujocoCommand(event, force = false, utterance = "", embodiment 
     speaker: embodiment.speaker || null,
     robot_speaking: Boolean(embodiment.robotSpeaking),
     attention_mode: embodiment.attentionMode || (event.target ? "invite" : "passive"),
+    invitation_id: embodiment.invitationId || null,
     stage: event.stage || document.body.dataset.stage || "diverge",
     core: { ...action, ...(embodiment.action || {}), display: embodiment.showDisplay ? (embodiment.information || "") : "" }
   };
@@ -557,7 +574,7 @@ function contextualUtterance({ key, strategy, target, stage, transcript, action 
     }).then((result) => {
       if (!result.utterance) return;
       state.utteranceCache.set(key, result.utterance);
-      if (state.activeUtteranceKey === key) applyActionOutput(action, result.utterance);
+      if (state.activeUtteranceKey === key) applyActionOutput(action, boundedRobotUtterance(key, result.utterance));
     }).catch(() => {});
   }
   return state.utteranceCache.get(key);
@@ -619,9 +636,10 @@ function renderDecision(event, eventIndex, time) {
   const currentSpeaker = currentLine?.speaker || null;
   const scriptedInvitedTarget = invitedParticipantFromLine(robotLine);
   const invitedTarget = scriptedInvitedTarget || (currentSpeaker ? null : event.target) || null;
+  const invitationId = invitedTarget ? `invite:${robotLine?.id || event.time}:${invitedTarget}` : null;
   const embodimentTarget = invitedTarget || currentSpeaker;
   const attentionMode = invitedTarget ? "invite" : "passive";
-  const shouldMoveForInvitation = invitedTarget ? (state.mujocoRuntime?.shouldMoveForInvite(invitedTarget) ?? true) : false;
+  const shouldMoveForInvitation = invitedTarget ? (state.mujocoRuntime?.shouldMoveForInvite(invitedTarget, invitationId) ?? true) : false;
   $("#robot").classList.toggle("intervening", intervening);
   orientRobotTo(embodimentTarget);
   const contextLines = state.session.transcript.filter((line) => line.start <= time && line.type === EVENT_TYPES.PARTICIPANT_UTTERANCE).slice(-6);
@@ -634,10 +652,11 @@ function renderDecision(event, eventIndex, time) {
       ? { ...action, move: "保持中心", orient: `头颈朝向 ${currentSpeaker}`, posture: "轻微倾向", voice: "保持安静", expression: "倾听" }
       : action;
   $("#robotMood").textContent = `${renderedAction.expression} · ${renderedAction.posture}`;
-  const utterance = robotLine?.text || contextualUtterance({ key: utteranceKey, strategy: event.strategy, target: invitedTarget, stage: event.stage, transcript: contextLines, action: renderedAction }) || event.utterance;
+  const proposedUtterance = robotLine?.text || contextualUtterance({ key: utteranceKey, strategy: event.strategy, target: invitedTarget, stage: event.stage, transcript: contextLines, action: renderedAction }) || event.utterance;
+  const utterance = boundedRobotUtterance(robotLine ? `scripted:${robotLine.id}` : utteranceKey, proposedUtterance);
   const information = candidateInformation();
   applyActionOutput(renderedAction, utterance, information);
-  dispatchMujocoCommand(event, false, utterance, { target: invitedTarget, speaker: invitedTarget ? null : currentSpeaker, transcriptStart: activeLine?.start, robotSpeaking: Boolean(robotLine), attentionMode, action: renderedAction, information, showDisplay: false });
+  dispatchMujocoCommand(event, false, utterance, { target: invitedTarget, speaker: invitedTarget ? null : currentSpeaker, transcriptStart: activeLine?.start, robotSpeaking: Boolean(robotLine && utterance), attentionMode, invitationId, action: renderedAction, information, showDisplay: false });
   const pod = invitedTarget ? state.config.pod.responses.low_participation : state.config.pod.responses.normal;
   $("#podTarget").textContent = invitedTarget ? `Pod ${invitedTarget} · 个体鼓励` : "群体陪伴";
   $("#podActions").textContent = `${pod.temperature} · ${pod.vibration} · ${pod.breathing}`;
@@ -731,7 +750,7 @@ function renderLiveAction(strategy) {
   $("#robotMood").textContent = `${action.expression} · ${action.posture}`;
   const transcript = state.liveLines.map((line) => ({ speaker: "现场", text: line.text, start: line.start, end: line.start + 1 }));
   const key = `live:${strategy}:${state.liveLines.length}:${transcript.at(-1)?.text || "empty"}`;
-  const utterance = contextualUtterance({ key, strategy, target: null, stage: document.body.dataset.stage || "diverge", transcript, action });
+  const utterance = boundedRobotUtterance(key, contextualUtterance({ key, strategy, target: null, stage: document.body.dataset.stage || "diverge", transcript, action }));
   applyActionOutput(action, utterance, "方案综合 Agent · 随现场讨论持续更新");
   dispatchMujocoCommand({ time: `live-${state.liveLines.length}`, strategy, target: null, stage: document.body.dataset.stage || "diverge" }, false, utterance);
 }
@@ -787,7 +806,7 @@ async function requestLiveAIDecision(signal, fallbackDecision) {
     $("#decisionConfidence").title = gaps.join("；");
     $("#candidateSummary").textContent = decision.candidates?.map((candidate) => `${state.config.core.strategies[candidate.strategy]?.label || candidate.strategy} ${candidate.utility}`).join(" / ") || "等待候选";
     renderLiveAction(decision.strategy);
-    if (decision.utterance) applyActionOutput(state.config.core.strategies[decision.strategy], decision.utterance);
+    if (decision.utterance) applyActionOutput(state.config.core.strategies[decision.strategy], boundedRobotUtterance(`live-ai:${requestId}`, decision.utterance));
   } catch (error) {
     $("#decisionSource").textContent = "AI 请求失败 · 安全回退";
     $("#expectedEffect").textContent = fallbackDecision.followUp;

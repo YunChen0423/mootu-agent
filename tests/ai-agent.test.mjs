@@ -121,7 +121,7 @@ test("icebreaker metrics cannot trigger an immediate discussion intervention or 
   assert.equal(events.find((event) => event.time === 220).stage, "converge");
 });
 
-test("quiet-member invitations have a dedicated longer cooldown", () => {
+test("quiet-member invitations run exactly twice with a dedicated cooldown", () => {
   const observe = { strategy: "observe", benefit: 20, disruption: 0, goal_fit: 20, confidence: 80 };
   const observations = [165, 220, 275, 330, 385].map((time) => ({
     time,
@@ -133,8 +133,9 @@ test("quiet-member invitations have a dedicated longer cooldown", () => {
   }));
   const raw = observations.map(({ time }) => ({ time, stage_recommendation: "diverge", evidence: [], missing_evidence: [], candidates: [observe] }));
   const events = sanitizeEvents(raw, observations, [{ id: "A" }, { id: "B" }, { id: "C" }], config);
-  assert.deepEqual(events.filter((event) => event.strategy === "invite_quiet_member").map((event) => event.time), [165, 385]);
+  assert.deepEqual(events.filter((event) => event.strategy === "invite_quiet_member").map((event) => event.time), [165, 275]);
   assert.match(events.find((event) => event.time === 220).reason, /冷却期/);
+  assert.match(events.find((event) => event.time === 385).reason, /两次邀请额度/);
 });
 
 test("convergence prompts are spaced and stop once the recent content has converged", () => {
