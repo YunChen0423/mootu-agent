@@ -5,7 +5,7 @@ const assetNames = ["index.html", "styles.css", "enhancements.css", "app.js", "a
 const assets = {};
 for (const name of assetNames) assets[`/${name}`] = await readFile(`public/${name}`, "utf8");
 const binaryAssets = {
-  "/mujoco/visuals-exact-v3.bin.gz": (await readFile("public/mujoco/visuals-exact-v3.bin.gz")).toString("base64")
+  "/mujoco/visuals-exact-v4.bin.gz": (await readFile("public/mujoco/visuals-exact-v4.bin.gz")).toString("base64")
 };
 const config = JSON.parse(assets["/config/actions.json"]);
 

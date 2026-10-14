@@ -1,27 +1,12 @@
 const MUJOCO_BASE = "https://cdn.jsdelivr.net/npm/@mujoco/mujoco@3.15.0/";
 const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js";
 const MODEL_URL = "/mujoco/exact-physics-model.xml";
-const VISUALS_URL = "/mujoco/visuals-exact-v3.bin.gz";
+const VISUALS_URL = "/mujoco/visuals-exact-v4.bin.gz";
 
 const PODS = [
   [0, 0.040], [-0.046, 0.025], [-0.046, -0.025],
   [0, -0.040], [0.046, -0.025], [0.046, 0.025]
 ];
-
-const VISUAL_BINDINGS = {
-  body_mesh: { body: "robot", position: [0, 0, 0] },
-  ball1_mesh: { body: "robot", position: [0, 0, 0] },
-  ball2_mesh: { body: "robot", position: [0, 0, 0] },
-  ball3_mesh: { body: "robot", position: [0, 0, 0] },
-  ball4_mesh: { body: "robot", position: [0, 0, 0] },
-  ball5_mesh: { body: "robot", position: [0, 0, 0] },
-  ball6_mesh: { body: "robot", position: [0, 0, 0] },
-  head_mesh: { body: "head", position: [0.000177, 0.00070, -0.00800] },
-  wheel_BL_mesh: { body: "wheel_BL", position: [-0.001600, 0.002577, 0.005830] },
-  wheel_BR_mesh: { body: "wheel_BR", position: [0.001976, 0.002577, 0.005830] },
-  wheel_FL_mesh: { body: "wheel_FL", position: [-0.002180, -0.001270, 0.005150] },
-  wheel_FR_mesh: { body: "wheel_FR", position: [0.002552, -0.001270, 0.005150] }
-};
 
 const readString = (bytes) => new TextDecoder().decode(bytes);
 
@@ -38,12 +23,18 @@ async function unpackVisuals() {
   offset += 4;
   for (let meshIndex = 0; meshIndex < count; meshIndex += 1) {
     const nameLength = view.getUint16(offset, true);
-    const vertexCount = view.getUint32(offset + 2, true);
-    const faceCount = view.getUint32(offset + 6, true);
-    const indexWidth = view.getUint8(offset + 10);
-    offset += 11;
+    const bodyNameLength = view.getUint16(offset + 2, true);
+    const vertexCount = view.getUint32(offset + 4, true);
+    const faceCount = view.getUint32(offset + 8, true);
+    const indexWidth = view.getUint8(offset + 12);
+    offset += 13;
     const name = readString(bytes.subarray(offset, offset + nameLength));
     offset += nameLength;
+    const bodyName = readString(bytes.subarray(offset, offset + bodyNameLength));
+    offset += bodyNameLength;
+    const localPosition = [view.getFloat32(offset, true), view.getFloat32(offset + 4, true), view.getFloat32(offset + 8, true)];
+    const localQuaternion = [view.getFloat32(offset + 12, true), view.getFloat32(offset + 16, true), view.getFloat32(offset + 20, true), view.getFloat32(offset + 24, true)];
+    offset += 28;
     const lower = [view.getFloat32(offset, true), view.getFloat32(offset + 4, true), view.getFloat32(offset + 8, true)];
     const upper = [view.getFloat32(offset + 12, true), view.getFloat32(offset + 16, true), view.getFloat32(offset + 20, true)];
     offset += 24;
@@ -58,7 +49,7 @@ async function unpackVisuals() {
       indices[index] = indexWidth === 2 ? view.getUint16(offset + index * 2, true) : view.getUint32(offset + index * 4, true);
     }
     offset += indices.length * indexWidth;
-    meshes.push({ name, positions, indices });
+    meshes.push({ name, bodyName, localPosition, localQuaternion, positions, indices });
   }
   return meshes;
 }
@@ -147,8 +138,6 @@ export async function createBrowserMujoco({ canvas }) {
   const freeQpos = Number(model.jnt_qposadr[jointId("robot_freejoint")]);
   const podGeomIds = Array.from({ length: 6 }, (_, index) => geomId(`pod_${index + 1}_light`));
   const exactVisuals = visualMeshes.map((asset) => {
-    const binding = VISUAL_BINDINGS[asset.name];
-    if (!binding) throw new Error(`缺少原始网格绑定：${asset.name}`);
     const geometry = exactGeometryFor(THREE, asset);
     const isWheel = asset.name.startsWith("wheel_");
     const material = new THREE.MeshStandardMaterial({
@@ -162,12 +151,18 @@ export async function createBrowserMujoco({ canvas }) {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     scene.add(mesh);
+    const localRotation = new THREE.Quaternion(
+      asset.localQuaternion[1], asset.localQuaternion[2], asset.localQuaternion[3], asset.localQuaternion[0]
+    );
+    const localMatrix = new THREE.Matrix4().compose(
+      new THREE.Vector3(...asset.localPosition), localRotation, new THREE.Vector3(1, 1, 1)
+    );
     return {
       mesh,
       geometry,
       material,
-      bodyId: bodyId(binding.body),
-      localMatrix: new THREE.Matrix4().makeTranslation(...binding.position)
+      bodyId: bodyId(asset.bodyName),
+      localMatrix
     };
   });
   const bodyMatrix = new THREE.Matrix4();

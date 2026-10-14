@@ -126,9 +126,10 @@ test("embodied output runs MuJoCo in the browser without a local bridge", () => 
   assert.match(html, /id="mujocoViewport"/);
   assert.match(html, /未减面原始网格 · 无需本地程序/);
   assert.match(app, /createBrowserMujoco/);
-  assert.match(browserMujoco, /visuals-exact-v3\.bin\.gz/);
+  assert.match(browserMujoco, /visuals-exact-v4\.bin\.gz/);
+  assert.match(browserMujoco, /asset\.localQuaternion/);
+  assert.match(browserMujoco, /bodyId\(asset\.bodyName\)/);
   assert.match(browserMujoco, /MjModel\.from_xml_string/);
-  assert.match(browserMujoco, /VISUAL_BINDINGS/);
   assert.match(app, /type: "mootu\.command"/);
   assert.match(app, /version: 1/);
   assert.match(app, /dispatchMujocoCommand\(event/);

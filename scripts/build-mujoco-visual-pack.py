@@ -13,7 +13,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT.parent / "mootu" / "interaction_demo.xml"
-OUTPUT = ROOT / "public" / "mujoco" / "visuals-exact-v3.bin.gz"
+OUTPUT = ROOT / "public" / "mujoco" / "visuals-exact-v4.bin.gz"
 XML_OUTPUT = ROOT / "public" / "mujoco" / "exact-physics-model.xml"
 
 
@@ -34,6 +34,20 @@ parts: list[bytes] = [struct.pack("<I", model.nmesh)]
 
 for mesh_id in range(model.nmesh):
     name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_MESH, mesh_id).encode("utf-8")
+    geom_ids = np.flatnonzero(
+        (model.geom_type == mujoco.mjtGeom.mjGEOM_MESH)
+        & (model.geom_dataid == mesh_id)
+    )
+    if len(geom_ids) != 1:
+        raise RuntimeError(f"Expected one visual geom for mesh {name!r}, found {len(geom_ids)}")
+    geom_id = int(geom_ids[0])
+    body_id = int(model.geom_bodyid[geom_id])
+    body_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, body_id).encode("utf-8")
+    # MuJoCo recenters and rotates imported OBJ data during compilation.  The
+    # compensating transform is folded into geom_pos/geom_quat, so exporting it
+    # is required to reproduce the native viewer assembly exactly.
+    local_position = np.asarray(model.geom_pos[geom_id], dtype="<f4")
+    local_quaternion = np.asarray(model.geom_quat[geom_id], dtype="<f4")
     vert_start = int(model.mesh_vertadr[mesh_id])
     vert_count = int(model.mesh_vertnum[mesh_id])
     face_start = int(model.mesh_faceadr[mesh_id])
@@ -48,8 +62,11 @@ for mesh_id in range(model.nmesh):
     index_dtype = "<u2" if index_width == 2 else "<u4"
     faces = np.asarray(source_faces, dtype=index_dtype).tobytes()
     parts.extend((
-        struct.pack("<HIIB", len(name), vert_count, face_count, index_width),
+        struct.pack("<HHIIB", len(name), len(body_name), vert_count, face_count, index_width),
         name,
+        body_name,
+        local_position.tobytes(),
+        local_quaternion.tobytes(),
         lower.tobytes(),
         upper.tobytes(),
         vertices,
