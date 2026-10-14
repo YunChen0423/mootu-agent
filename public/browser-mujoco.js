@@ -19,6 +19,7 @@ const SPEAKER_NAVIGATION_DURATION = 1.8;
 const INVITATION_APPROACH_DURATION = 1.2;
 const INVITATION_HOLD_MS = 1800;
 const INVITATION_RETURN_DURATION = 1.8;
+const INVITATION_COOLDOWN_MS = 10000;
 const MAX_INVITATION_ANIMATIONS = 2;
 
 const PODS = [
@@ -200,7 +201,8 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     externalFocus: false, speaker: null, selectedPodNumber: null, attentionMode: null, action: null,
     activePods: [...POD_LAYOUTS[3]], speakerPodMap: new Map([["A", { pod: 1, number: 1 }], ["B", { pod: 5, number: 2 }], ["C", { pod: 0, number: 3 }]]),
     votePlan: [], voteLabels: [], voteWinner: null, movedInviteTargets: new Set(), invitationCount: 0,
-    icebreakerTargetIndex: 0, pendingScenario: null, pendingAction: null
+    icebreakerTargetIndex: 0, pendingScenario: null, pendingAction: null,
+    activeInvitationId: null, invitationCooldownUntil: 0
   };
   let frameId = 0;
   let running = false;
@@ -254,7 +256,13 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     demo.navKind = kind;
     demo.navDuration = duration;
   };
-  const invitationInProgress = () => demo.mode === "discussion" && demo.attentionMode === "invite" && ["moving", "arrived", "returning"].includes(demo.navigation);
+  const invitationInProgress = () => Boolean(demo.activeInvitationId);
+  const resetInvitationState = () => {
+    demo.activeInvitationId = null;
+    demo.invitationCooldownUntil = 0;
+    demo.movedInviteTargets.clear();
+    demo.invitationCount = 0;
+  };
   const setScenario = (mode, { force = false } = {}) => {
     if (!force && invitationInProgress()) {
       demo.pendingScenario = mode;
@@ -286,9 +294,10 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     demo.activePods = [...layout];
     demo.speakerPodMap = new Map(speakers.map((speaker, index) => [speaker, { pod: layout[index], number: index + 1 }]));
     demo.icebreakerTargetIndex = Math.max(0, speakers.indexOf("A"));
-    demo.movedInviteTargets.clear();
-    demo.invitationCount = 0;
+    resetInvitationState();
+    demo.pendingScenario = null;
     demo.pendingAction = null;
+    clearNavigation();
     mujoco.mj_resetData(model, data);
     mujoco.mj_forward(model, data);
     settleSimulation();
@@ -299,27 +308,32 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     const speaker = String(speakerId || "").trim();
     const target = demo.speakerPodMap.get(speaker);
     if (!target) return false;
-    if (demo.externalFocus && demo.speaker === speaker && demo.attentionMode === attentionMode && ["moving", "arrived", "listening"].includes(demo.navigation)) return true;
+    const now = performance.now();
+    const invitationKey = String(invitationId || speaker);
+    const invitationAllowed = attentionMode === "invite"
+      && !invitationInProgress()
+      && now >= demo.invitationCooldownUntil
+      && demo.invitationCount < MAX_INVITATION_ANIMATIONS
+      && !demo.movedInviteTargets.has(invitationKey);
+    const effectiveAttentionMode = invitationAllowed ? "invite" : attentionMode === "invite" ? "passive" : attentionMode;
+    if (demo.externalFocus && demo.speaker === speaker && demo.attentionMode === effectiveAttentionMode && ["moving", "arrived", "listening", "turning"].includes(demo.navigation)) return true;
     demo.mode = "discussion";
     demo.phase = "attention";
-    const now = performance.now();
     demo.phaseStarted = now;
     demo.selectedPod = target.pod;
     demo.selectedPodNumber = target.number;
-    const invitationKey = String(invitationId || speaker);
-    const shouldMoveForInvitation = attentionMode === "invite"
-      && demo.invitationCount < MAX_INVITATION_ANIMATIONS
-      && !demo.movedInviteTargets.has(invitationKey);
+    const shouldMoveForInvitation = invitationAllowed;
     demo.navigation = shouldMoveForInvitation ? "moving" : "turning";
     demo.arrivedAt = null;
     demo.externalFocus = true;
     demo.speaker = speaker;
-    demo.attentionMode = attentionMode;
+    demo.attentionMode = effectiveAttentionMode;
     const [podX, podY] = PODS[target.pod];
     const targetYaw = Math.atan2(-podX, podY);
     if (shouldMoveForInvitation) {
       demo.movedInviteTargets.add(invitationKey);
       demo.invitationCount += 1;
+      demo.activeInvitationId = invitationKey;
       startBaseTransition(now, {
         x: podX * INVITE_APPROACH_RATIO,
         y: podY * INVITE_APPROACH_RATIO,
@@ -335,10 +349,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
   };
   const setAction = (action, { force = false } = {}) => {
     if (!force && invitationInProgress()) {
-      const repeatsActiveInvitation = action?.attention_mode === "invite"
-        && action?.invitation_id
-        && demo.movedInviteTargets.has(String(action.invitation_id));
-      if (!repeatsActiveInvitation) demo.pendingAction = action;
+      if (action?.attention_mode !== "invite") demo.pendingAction = action;
       return;
     }
     demo.action = action?.core || null;
@@ -572,6 +583,8 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
         demo.externalFocus = false;
         demo.speaker = null;
         demo.attentionMode = null;
+        demo.activeInvitationId = null;
+        demo.invitationCooldownUntil = now + INVITATION_COOLDOWN_MS;
       } else if (completedKind === "passive") {
         demo.navigation = "listening";
         if (demo.pendingScenario) {
@@ -675,7 +688,10 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     configureParticipants,
     shouldMoveForInvite(speaker, invitationId = null) {
       const key = String(invitationId || speaker || "").trim();
-      return demo.invitationCount < MAX_INVITATION_ANIMATIONS && !demo.movedInviteTargets.has(key);
+      return !invitationInProgress()
+        && performance.now() >= demo.invitationCooldownUntil
+        && demo.invitationCount < MAX_INVITATION_ANIMATIONS
+        && !demo.movedInviteTargets.has(key);
     },
     setVotingState({ candidates = [], records = [], winner = null } = {}) {
       demo.voteLabels = candidates.map((candidate) => String(candidate.label || candidate)).slice(0, 4);
@@ -707,10 +723,14 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
       }
     },
     reset() {
+      resetInvitationState();
+      demo.pendingScenario = null;
+      demo.pendingAction = null;
+      clearNavigation();
       mujoco.mj_resetData(model, data);
       mujoco.mj_forward(model, data);
       settleSimulation();
-      setScenario(demo.mode);
+      setScenario("discussion", { force: true });
     },
     dispose() {
       cancelAnimationFrame(frameId);

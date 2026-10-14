@@ -439,6 +439,7 @@ function normalizeTranscript(data) {
 }
 
 function loadImportedTranscript(lines, fileName) {
+  resetPlaybackForUpload({ resetRuntime: false });
   const palette = ["#f59e0b", "#7c6ee6", "#31a68a", "#e76f51", "#4788c7", "#b565a7"];
   const speakers = participantSpeakers(lines);
   state.session.transcript = lines;
@@ -457,7 +458,6 @@ function loadImportedTranscript(lines, fileName) {
   renderStatic();
   configureMujocoParticipants();
   setTime(0);
-  toast(`已载入 ${fileName} · ${lines.length} 条事件 · ${speakers.length} 位参与者`);
   if (state.model === "deepseek") void runFullAgentAnalysis({ automatic: true });
 }
 
@@ -913,11 +913,30 @@ function seekPlayback(value) {
   }
 }
 
-function toast(message) {
-  $("#toast").textContent = message;
-  $("#toast").classList.add("show");
-  setTimeout(() => $("#toast").classList.remove("show"), 2400);
+function resetPlaybackForUpload({ resetRuntime = true } = {}) {
+  state.playing = false;
+  clearInterval(state.timer);
+  state.timer = null;
+  state.time = 0;
+  state.playbackOrigin = 0;
+  state.playbackStartedAt = 0;
+  state.macroPhase = null;
+  state.mujocoCommandKey = null;
+  state.pendingMujocoAction = null;
+  clearTimeout(state.speechTimer);
+  state.activeSpeechKey = null;
+  state.lastSpeechText = "";
+  $("#agentSpeech").classList.remove("show");
+  $("#playBtn").textContent = "▶";
+  if ($("#video").hasAttribute("src")) {
+    $("#video").pause();
+    $("#video").currentTime = 0;
+  }
+  syncMujocoPlayback();
+  if (resetRuntime) state.mujocoRuntime?.reset();
 }
+
+function toast() {}
 
 $("#playBtn").addEventListener("click", togglePlayback);
 $("#scrubber").addEventListener("input", (event) => seekPlayback(event.target.value));
@@ -966,6 +985,7 @@ $("#videoInput").addEventListener("change", async (event) => {
   const file = event.target.files[0];
   if (!file) return;
   await stopLiveMode();
+  resetPlaybackForUpload();
   $("#video").src = URL.createObjectURL(file);
   $("#video").hidden = false;
   $("#videoPlaceholder").hidden = true;

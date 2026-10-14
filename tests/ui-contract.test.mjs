@@ -250,6 +250,10 @@ test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry s
   assert.match(browserMujoco, /setAction = \(action, \{ force = false \} = \{\}\)/);
   assert.match(browserMujoco, /kind: "invite-return"/);
   assert.match(browserMujoco, /INVITATION_RETURN_DURATION = 1\.8/);
+  assert.match(browserMujoco, /INVITATION_COOLDOWN_MS = 10000/);
+  assert.match(browserMujoco, /const invitationInProgress = \(\) => Boolean\(demo\.activeInvitationId\)/);
+  assert.match(browserMujoco, /action\?\.attention_mode !== "invite"/);
+  assert.match(browserMujoco, /demo\.invitationCooldownUntil = now \+ INVITATION_COOLDOWN_MS/);
   assert.match(browserMujoco, /clearNavigation\(\);\s*if \(resumeScenario\)/);
   assert.match(browserMujoco, /邀请 \$\{speaker\} 发言/);
   assert.match(browserMujoco, /正在发言 · 保持中心并头颈朝向/);
@@ -387,6 +391,10 @@ test("uploaded speakers define the visible pod count and time zero has no metric
   assert.match(app, /现场\|设备/);
   assert.match(app, /hasDiscussionEvidence[\s\S]*clearMetric\("participation"/);
   assert.match(app, /showTarget = activeIndex >= 0/);
+  assert.match(app, /function resetPlaybackForUpload/);
+  assert.match(app, /resetPlaybackForUpload\(\{ resetRuntime: false \}\)/);
+  assert.match(app, /state\.mujocoRuntime\?\.reset\(\)/);
+  assert.doesNotMatch(html, /id="toast"/);
 });
 
 test("session harness separates immutable events, blackboard and scoped agent ownership", () => {
