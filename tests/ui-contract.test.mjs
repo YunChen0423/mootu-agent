@@ -86,6 +86,8 @@ test("embodied display copy is generated from recent discussion context", () => 
   assert.match(app, /\/api\/generate-message/);
   assert.match(app, /屏幕信息 · 显示文字/);
   assert.match(app, /candidateInformation/);
+  assert.doesNotMatch(app, /方案综合 v\$\{snapshot\.version\}/);
+  assert.match(app, /slice\(0, 8\)/);
   assert.match(html, /id="agentSpeech"/);
   assert.match(app, /#agentSpeech/);
 });
@@ -144,6 +146,7 @@ test("input controls are icon-only on one line and timeline seeking can move bac
   assert.match(enhancements, /\.input-actions[\s\S]*flex-wrap: nowrap !important/);
   assert.match(app, /function seekPlayback/);
   assert.match(app, /state\.playbackOrigin = target/);
+  assert.match(app, /if \(!state\.session \|\| !state\.sessionHarness \|\| !state\.events\.length\) return/);
   assert.match(app, /#scrubber"\)\.addEventListener\("input", \(event\) => seekPlayback/);
 });
 
@@ -205,6 +208,7 @@ test("MuJoCo advances only while the left playback is running", () => {
   assert.match(browserMujoco, /setPlaying\(active\)/);
   assert.match(browserMujoco, /if \(!running\) return/);
   assert.doesNotMatch(browserMujoco, /frameId = requestAnimationFrame\(animate\);\s*\n\s*return \{/);
+  assert.match(app, /state\.macroPhase = null;\s*\n\s*syncMujocoPhase\(state\.currentBlackboard\)/);
 });
 
 test("Pod feedback keeps only the concrete behavior card", () => {
@@ -215,9 +219,11 @@ test("Pod feedback keeps only the concrete behavior card", () => {
 
 test("the current transcript speaker drives MooTu toward the matching pod", () => {
   assert.match(app, /function syncMujocoSpeaker/);
+  assert.match(app, /function participantAt/);
   assert.match(app, /attentionMode/);
-  assert.match(app, /稍微靠近 \$\{currentSpeaker\}/);
+  assert.match(app, /move: "保持中心"/);
   assert.match(app, /头颈朝向 \$\{currentSpeaker\}/);
+  assert.match(app, /target: invitedTarget, speaker: invitedTarget \? null : currentSpeaker/);
   assert.match(browserMujoco, /POD_LAYOUTS = Object\.freeze/);
   assert.match(browserMujoco, /const focusSpeaker = \(speakerId,/);
   assert.match(browserMujoco, /SPEAKER_NAVIGATION_DURATION = 1\.2/);
@@ -227,6 +233,8 @@ test("the current transcript speaker drives MooTu toward the matching pod", () =
 test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry stable", () => {
   assert.match(browserMujoco, /INVITE_APPROACH_RATIO = 0\.34/);
   assert.match(browserMujoco, /attentionMode === "invite" \? "moving" : "listening"/);
+  assert.match(browserMujoco, /邀请 \$\{speaker\} 发言/);
+  assert.match(browserMujoco, /正在发言 · 保持中心并头颈朝向/);
   assert.match(browserMujoco, /if \(attentionMode !== "invite"\) centerRobot\(\)/);
   assert.match(browserMujoco, /isDiscussionNavigation = [^;]*attentionMode === "invite"/);
   assert.match(browserMujoco, /const centerRobot/);
@@ -275,6 +283,7 @@ test("group state uses plain labels and a flashing warning background", () => {
   assert.match(enhancements, /\.metric-row\.metric-warning[\s\S]*animation: metric-alert/);
   assert.match(enhancements, /@keyframes metric-alert/);
   assert.match(app, /item\.classList\.remove\("target"\)/);
+  assert.match(enhancements, /Compact group-state rows/);
 });
 
 test("the discussion preview cannot be compressed upward", () => {

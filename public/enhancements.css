@@ -1518,3 +1518,24 @@ body[data-stage="converge"] .metric-row.metric-warning {
   .reasoning-panel .stage-criteria { grid-column: 2; grid-row: 3; }
   .reasoning-panel .state-block { grid-column: 2; grid-row: 4; }
 }
+
+/* Compact group-state rows inside the narrow judgment column. */
+.reasoning-panel .metrics {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  margin-top: 3px;
+}
+.reasoning-panel .metrics .metric-row {
+  display: grid;
+  grid-template-columns: minmax(76px, .72fr) minmax(0, 1.28fr);
+  gap: 4px;
+  min-width: 0;
+  padding: 3px 2px;
+}
+.reasoning-panel .metric-row > span { padding: 2px 0; font-size: 9px; }
+.reasoning-panel .metric-row .state-scale { min-width: 0; gap: 2px; margin: 0; }
+.reasoning-panel .metric-row .state-scale i { min-width: 0; padding: 3px 1px 5px; font-size: 8px; white-space: nowrap; }
+.reasoning-panel .metric-row.metric-warning,
+body[data-stage="converge"] .reasoning-panel .metric-row.metric-warning { padding: 4px 6px !important; }
+.reasoning-panel .metric-row.metric-warning > span::after { margin-left: 4px; font-size: 7px; }

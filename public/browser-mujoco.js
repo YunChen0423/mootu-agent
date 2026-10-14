@@ -381,8 +381,10 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
       else if (demo.phase === "selected") label = `选中 Pod ${demo.selectedPodNumber} · ${demo.navigation === "arrived" ? "邀请发言" : "靠近参与者"}`;
       else label = "返回中心";
     } else if (demo.mode === "discussion") {
-      const subject = demo.attentionMode === "invite" ? `邀请 ${demo.speaker || "参与者"} 发言` : `${demo.speaker || "参与者"} 正在发言`;
-      label = `${subject} · ${demo.navigation === "arrived" ? "轻微靠近并头颈朝向" : "调整倾听朝向"}`;
+      const speaker = demo.speaker || "参与者";
+      label = demo.attentionMode === "invite"
+        ? `邀请 ${speaker} 发言 · ${demo.navigation === "arrived" ? "已靠近并头颈朝向" : "轻微靠近中"}`
+        : `${speaker} 正在发言 · 保持中心并头颈朝向`;
     } else {
       const a = demo.votes.filter((vote) => vote === "A").length;
       const b = demo.votes.filter((vote) => vote === "B").length;

@@ -60,11 +60,11 @@ function keywordLabel(text) {
   const domainTerms = [...clean.matchAll(/[\u4e00-\u9fff]{0,6}(?:电话亭|小房间|空间|路线|地图|声音|音乐|任务|集章|游戏|装置|原型|互动|交互|拼合|组合)/g)]
     .map((match) => match[0].replace(/^(?:一个|一种|一条|可以是|像|做成|真正不同的)/, "").split("的").at(-1))
     .map((term) => term.replace(/^(?:单纯|收集|生成|合成|使用|通过)/, ""))
-    .filter((term) => term.length >= 2 && term.length <= 10);
-  if (domainTerms.length) return [...new Set(domainTerms)].slice(-2).join("＋").slice(0, 12);
+    .filter((term) => term.length >= 2 && term.length <= 8);
+  if (domainTerms.length) return [...new Set(domainTerms)].slice(-2).join("＋").slice(0, 8);
   const clauses = clean.split(/[，,。！？；;：:]/).map((clause) => clause.trim()).filter((clause) => clause.length >= 2);
   const fallback = clauses.at(-1) || clean || "待归类";
-  return fallback.replace(/^(?:可以是|可以做|先做|做一个|变成|就是)/, "").slice(0, 10);
+  return fallback.replace(/^(?:可以是|可以做|先做|做一个|变成|就是)/, "").slice(0, 8);
 }
 
 function extractCandidates(events, time) {
@@ -72,9 +72,15 @@ function extractCandidates(events, time) {
   const numberedCandidates = (text) => [...text.matchAll(/[一二三1-3][、，,:：]\s*([^；;。]+)/g)];
   const source = [...visible].reverse().find((event) => event.type === EVENT_TYPES.ROBOT_UTTERANCE && numberedCandidates(event.text).length >= 2);
   if (!source) {
-    const working = visible.filter((event) => event.type === EVENT_TYPES.PARTICIPANT_UTTERANCE && event.text.length >= 8).slice(-3);
+    const participantIdeas = visible.filter((event) => event.type === EVENT_TYPES.PARTICIPANT_UTTERANCE && event.text.length >= 8);
+    const stableWindowEnd = Math.max(3, Math.floor(participantIdeas.length / 6) * 6);
+    const stableIdeas = participantIdeas.slice(0, stableWindowEnd);
+    const working = [...stableIdeas].reverse().filter((event, index, items) => {
+      const label = keywordLabel(event.text);
+      return items.findIndex((candidate) => keywordLabel(candidate.text) === label) === index;
+    }).slice(0, 3).reverse();
     return Object.freeze({
-      version: working.length ? visible.filter((event) => event.type === EVENT_TYPES.PARTICIPANT_UTTERANCE).length : 0,
+      version: working.length ? Math.ceil(Math.min(participantIdeas.length, stableWindowEnd) / 6) : 0,
       status: working.length ? "evolving" : "empty",
       items: Object.freeze(working.map((event, index) => Object.freeze({ id: `working-${index + 1}`, label: keywordLabel(event.text), sourceEventId: event.id })))
     });

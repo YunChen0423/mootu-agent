@@ -72,6 +72,6 @@ test("candidate synthesis evolves in parallel with discussion without reading fu
   assert.deepEqual(early.coactiveAgents, ["discussion_facilitator", "candidate_synthesis"]);
   assert.equal(early.candidates.status, "evolving");
   assert.ok(early.candidates.items.length > 0);
-  assert.ok(early.candidates.items.every((item) => item.label.length <= 12));
+  assert.ok(early.candidates.items.every((item) => item.label.length <= 8));
   assert.equal(early.candidates.items.some((item) => item.label.includes("真实声音")), false);
 });
