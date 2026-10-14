@@ -122,9 +122,11 @@ test("AI analysis starts automatically and the button is only a retry", () => {
   assert.doesNotMatch(html, />运行 AI Agent<\/button>/);
 });
 
-test("embodied output runs MuJoCo in the browser without a local bridge", () => {
+test("embodied output reproduces the interaction demo in browser MuJoCo", () => {
   assert.match(html, /id="mujocoViewport"/);
-  assert.match(html, /未减面原始网格 · 无需本地程序/);
+  assert.match(html, /run_interaction_demo\.sh · 浏览器复刻/);
+  assert.match(html, /破冰接力/);
+  assert.match(html, /投票收敛/);
   assert.match(app, /createBrowserMujoco/);
   assert.match(browserMujoco, /visuals-exact-v4\.bin\.gz/);
   assert.match(browserMujoco, /asset\.localQuaternion/);
@@ -132,6 +134,9 @@ test("embodied output runs MuJoCo in the browser without a local bridge", () => 
   assert.match(browserMujoco, /SETTLE_SECONDS = 0\.5/);
   assert.match(browserMujoco, /neckPitch \/ NECK_SEGMENT_COUNT/);
   assert.match(browserMujoco, /haltBaseMotion/);
+  assert.match(browserMujoco, /NAVIGATION_DURATION = 3/);
+  assert.match(browserMujoco, /灯光接力/);
+  assert.match(browserMujoco, /applyScriptedNavigation/);
   assert.match(browserMujoco, /MjModel\.from_xml_string/);
   assert.match(app, /type: "mootu\.command"/);
   assert.match(app, /version: 1/);

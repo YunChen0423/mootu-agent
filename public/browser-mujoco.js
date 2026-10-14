@@ -4,6 +4,13 @@ const MODEL_URL = "/mujoco/exact-physics-model.xml";
 const VISUALS_URL = "/mujoco/visuals-exact-v4.bin.gz";
 const SETTLE_SECONDS = 0.5;
 const NECK_SEGMENT_COUNT = 3;
+const OFF = [0.16, 0.16, 0.19, 1];
+const RELAY = [1, 0.88, 0.22, 1];
+const SELECTED = [0.20, 1, 0.42, 1];
+const VOTE_A = [1, 0.55, 0.08, 1];
+const VOTE_B = [0.10, 0.62, 1, 1];
+const APPROACH_DISTANCE = 0.020;
+const NAVIGATION_DURATION = 3;
 
 const PODS = [
   [0, 0.040], [-0.046, 0.025], [-0.046, -0.025],
@@ -79,7 +86,7 @@ function exactGeometryFor(THREE, asset) {
   return geometry;
 }
 
-export async function createBrowserMujoco({ canvas }) {
+export async function createBrowserMujoco({ canvas, onStatus }) {
   const [{ default: loadMujoco }, THREE, modelXml, visualMeshes] = await Promise.all([
     import(`${MUJOCO_BASE}mujoco.js`),
     import(THREE_URL),
@@ -112,8 +119,9 @@ export async function createBrowserMujoco({ canvas }) {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   const camera = new THREE.PerspectiveCamera(38, 16 / 9, 0.001, 2);
   camera.up.set(0, 0, 1);
-  camera.position.set(0, -0.155, 0.115);
-  camera.lookAt(0, 0, 0.006);
+  // Match run_interaction_demo.sh: distance .17, azimuth -90, elevation -62.
+  camera.position.set(0, -0.080, 0.155);
+  camera.lookAt(0, 0, 0.005);
 
   const screen = canvas.parentElement;
   const resize = () => {
@@ -140,7 +148,9 @@ export async function createBrowserMujoco({ canvas }) {
   const freeQpos = Number(model.jnt_qposadr[jointId("robot_freejoint")]);
   const freeDof = Number(model.jnt_dofadr[jointId("robot_freejoint")]);
   const wheelDofs = ["wheel_FL_joint", "wheel_FR_joint"].map((name) => Number(model.jnt_dofadr[jointId(name)]));
+  const wheelQpos = ["wheel_FL_joint", "wheel_FR_joint"].map((name) => Number(model.jnt_qposadr[jointId(name)]));
   const podGeomIds = Array.from({ length: 6 }, (_, index) => geomId(`pod_${index + 1}_light`));
+  const candidateGeomIds = [geomId("candidate_a"), geomId("candidate_b")];
   const exactVisuals = visualMeshes.map((asset) => {
     const geometry = exactGeometryFor(THREE, asset);
     const isWheel = asset.name.startsWith("wheel_");
@@ -170,8 +180,12 @@ export async function createBrowserMujoco({ canvas }) {
     };
   });
   const bodyMatrix = new THREE.Matrix4();
-  let command = { strategy: "observe", target: null };
-  let commandStarted = performance.now();
+  const votePattern = ["A", "B", "A", "A", "B", "A"];
+  const demo = {
+    mode: "icebreaker", phase: "intro", phaseStarted: performance.now(), selectedPod: null,
+    navigation: null, arrivedAt: null, navStarted: null, navStart: null, navTarget: null,
+    navLast: null, navHeight: null, votes: Array(6).fill(null), winner: null, round: 0
+  };
   let frameId = 0;
 
   const setControl = (name, value) => {
@@ -192,62 +206,189 @@ export async function createBrowserMujoco({ canvas }) {
     mujoco.mj_forward(model, data);
   };
   const setColor = (id, rgba) => rgba.forEach((value, index) => { model.geom_rgba[id * 4 + index] = value; });
-  const setAction = (next) => {
-    command = next || { strategy: "observe", target: null };
-    commandStarted = performance.now();
-    const target = String(command.target || "").trim().toUpperCase();
-    const targetIndex = /^[A-F]$/.test(target) ? target.charCodeAt(0) - 65 : Number(target) >= 1 && Number(target) <= 6 ? Number(target) - 1 : -1;
-    podGeomIds.forEach((id, index) => setColor(id, index === targetIndex ? [0.2, 1, 0.42, 1] : [0.16, 0.16, 0.19, 1]));
+  const clearNavigation = () => {
+    demo.navStarted = null;
+    demo.navStart = null;
+    demo.navTarget = null;
+    demo.navLast = null;
+    demo.navHeight = null;
   };
-
   const wrapAngle = (angle) => (angle + Math.PI) % (Math.PI * 2) - Math.PI;
-  const applyControls = (now) => {
-    const elapsed = (now - commandStarted) / 1000;
-    const strategy = command.strategy || "observe";
-    const target = String(command.target || "").trim().toUpperCase();
-    const targetIndex = /^[A-F]$/.test(target) ? target.charCodeAt(0) - 65 : -1;
-    let left = 0, right = 0, neckPitch = 0, neckSide = 0, headPitch = 0, headYaw = 0;
-    if (strategy === "invite_quiet_member" && targetIndex >= 0) {
-      const [tx, ty] = PODS[targetIndex];
-      const x = Number(data.qpos[freeQpos]);
-      const y = Number(data.qpos[freeQpos + 1]);
-      const q = Array.from(data.qpos.slice(freeQpos + 3, freeQpos + 7), Number);
-      const yaw = Math.atan2(2 * (q[0] * q[3] + q[1] * q[2]), 1 - 2 * (q[2] * q[2] + q[3] * q[3]));
-      const error = wrapAngle(Math.atan2(-(tx - x), ty - y) - yaw);
-      const distance = Math.hypot(tx - x, ty - y);
-      if (Math.abs(error) > 0.12) {
-        const turn = Math.sign(error) * Math.min(10, Math.max(5, Math.abs(error) * 8));
-        left = -turn;
-        right = turn;
-      } else if (distance > 0.022) {
-        left = -8;
-        right = -8;
+  const baseYaw = () => {
+    const w = Number(data.qpos[freeQpos + 3]);
+    const x = Number(data.qpos[freeQpos + 4]);
+    const y = Number(data.qpos[freeQpos + 5]);
+    const z = Number(data.qpos[freeQpos + 6]);
+    return Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
+  };
+  const setScenario = (mode) => {
+    const now = performance.now();
+    demo.mode = mode === "voting" ? "voting" : "icebreaker";
+    demo.phase = demo.mode === "icebreaker" ? "intro" : "open";
+    demo.phaseStarted = now;
+    demo.selectedPod = null;
+    demo.navigation = null;
+    demo.arrivedAt = null;
+    demo.votes.fill(null);
+    demo.winner = null;
+    clearNavigation();
+  };
+  const setAction = () => {};
+  const updateDemoState = (now) => {
+    const elapsed = (now - demo.phaseStarted) / 1000;
+    if (demo.mode === "icebreaker") {
+      if (demo.phase === "intro" && elapsed >= 1.5) {
+        demo.phase = "relay";
+        demo.phaseStarted = now;
+      } else if (demo.phase === "relay" && elapsed >= 5.4) {
+        demo.phase = "selected";
+        demo.phaseStarted = now;
+        demo.selectedPod = (demo.round * 2 + 1) % 6;
+        demo.round += 1;
+        demo.navigation = "moving";
+        clearNavigation();
+      } else if (demo.phase === "selected" && demo.navigation === "arrived" && now - demo.arrivedAt >= 5000) {
+        demo.phase = "returning";
+        demo.phaseStarted = now;
+        demo.navigation = "moving";
+        demo.arrivedAt = null;
+        clearNavigation();
+      } else if (demo.phase === "returning" && demo.navigation === "home") {
+        demo.phase = "relay";
+        demo.phaseStarted = now;
+        demo.selectedPod = null;
+        demo.navigation = null;
+        clearNavigation();
       }
-      neckPitch = 0.055;
-      headPitch = 0.08;
-      headYaw = Math.max(-0.45, Math.min(0.45, error * 0.5));
-    } else if (strategy === "open_new_direction" || strategy === "prepare_convergence") {
-      headYaw = Math.sin(elapsed * 1.45) * (strategy === "open_new_direction" ? 0.65 : 0.42);
-      neckPitch = -0.04;
-      headPitch = -0.08;
-    } else if (strategy === "sustain_flow") {
-      neckPitch = 0.045;
-      headPitch = Math.sin(elapsed * 5.2) * 0.14;
-    } else if (strategy === "advance_decision") {
-      neckPitch = 0.06;
-      headPitch = Math.max(0, Math.sin(elapsed * 4.2)) * 0.1;
-    } else {
-      headYaw = Math.sin(elapsed / 1.7) * 0.18;
-      neckSide = Math.sin(elapsed / 2.3) * 0.012;
+    } else if (demo.phase === "open") {
+      const count = Math.min(6, Math.floor(elapsed / 0.75));
+      for (let index = 0; index < 6; index += 1) demo.votes[index] = index < count ? votePattern[index] : null;
+      if (elapsed >= 5.5) {
+        demo.phase = "result";
+        demo.phaseStarted = now;
+        demo.winner = "A";
+      }
+    } else if (elapsed >= 5) {
+      demo.phase = "open";
+      demo.phaseStarted = now;
+      demo.votes.fill(null);
+      demo.winner = null;
     }
-    setControl("wheel_FL", left);
-    setControl("wheel_FR", right);
+  };
+  const updateDemoVisuals = (now) => {
+    const colors = Array.from({ length: 6 }, () => OFF);
+    const elapsed = (now - demo.phaseStarted) / 1000;
+    if (demo.mode === "icebreaker") {
+      if (demo.phase === "intro") {
+        const pulse = 0.5 + 0.5 * Math.sin(elapsed * Math.PI * 2);
+        for (let index = 0; index < 6; index += 1) colors[index] = [0.45 + 0.45 * pulse, 0.28 + 0.42 * pulse, 0.05, 1];
+      } else if (demo.phase === "relay") {
+        colors[Math.floor(elapsed / 0.30) % 6] = RELAY;
+      } else if (demo.selectedPod !== null) {
+        colors[demo.selectedPod] = SELECTED;
+      }
+      setColor(candidateGeomIds[0], [0.35, 0.22, 0.08, 1]);
+      setColor(candidateGeomIds[1], [0.08, 0.22, 0.35, 1]);
+    } else {
+      for (let index = 0; index < 6; index += 1) colors[index] = demo.votes[index] === "A" ? VOTE_A : demo.votes[index] === "B" ? VOTE_B : OFF;
+      setColor(candidateGeomIds[0], demo.phase === "result" && demo.winner === "A" ? SELECTED : VOTE_A);
+      setColor(candidateGeomIds[1], demo.phase === "result" && demo.winner === "B" ? SELECTED : VOTE_B);
+    }
+    podGeomIds.forEach((id, index) => setColor(id, colors[index]));
+  };
+  const reportDemoStatus = (now) => {
+    const elapsed = (now - demo.phaseStarted) / 1000;
+    let label;
+    if (demo.mode === "icebreaker") {
+      if (demo.phase === "intro") label = "破冰启动 · MooTu 发起互动";
+      else if (demo.phase === "relay") label = `灯光接力 · Pod ${Math.floor(elapsed / 0.30) % 6 + 1}`;
+      else if (demo.phase === "selected") label = `选中 Pod ${demo.selectedPod + 1} · ${demo.navigation === "arrived" ? "邀请发言" : "靠近参与者"}`;
+      else label = "返回中心";
+    } else {
+      const a = demo.votes.filter((vote) => vote === "A").length;
+      const b = demo.votes.filter((vote) => vote === "B").length;
+      label = demo.phase === "open" ? `投票进行中 · A ${a} / B ${b}` : `投票结果 · A 胜出 ${a}:${b}`;
+    }
+    onStatus?.(label);
+  };
+  const applyDemoControls = (now) => {
+    const elapsed = (now - demo.phaseStarted) / 1000;
+    let neckSide = 0, neckPitch = 0, headPitch = 0, headYaw = 0;
+    if (demo.mode === "icebreaker" && demo.phase === "selected" && demo.navigation === "arrived") {
+      headPitch = 0.14 * Math.max(0, Math.sin(((now - demo.arrivedAt) / 1000) * Math.PI * 0.8));
+    } else if (demo.mode === "icebreaker" && !["selected", "returning"].includes(demo.phase)) {
+      headYaw = (Math.PI / 10) * Math.sin(elapsed * 1.8);
+      headPitch = (Math.PI / 36) * Math.sin(elapsed * 2.5);
+      neckSide = (7 * Math.PI / 180) * Math.sin(elapsed * 1.2);
+    } else if (demo.mode === "voting" && demo.phase === "result") {
+      const [tx, ty] = demo.winner === "A" ? [-0.013, 0.020] : [0.013, 0.020];
+      const dx = tx - Number(data.qpos[freeQpos]);
+      const dy = ty - Number(data.qpos[freeQpos + 1]);
+      headYaw = Math.max(-0.61, Math.min(0.61, wrapAngle(Math.atan2(-dx, dy) - baseYaw())));
+    }
+    setControl("wheel_FL", 0);
+    setControl("wheel_FR", 0);
     for (const index of [1, 2, 3]) {
       setControl(`neck_${index}_pitch`, neckPitch / NECK_SEGMENT_COUNT);
       setControl(`neck_${index}_side`, neckSide / NECK_SEGMENT_COUNT);
     }
     setControl("head_pitch", headPitch);
     setControl("head_yaw", headYaw);
+  };
+  const smoothstep = (value) => {
+    const progress = Math.max(0, Math.min(1, value));
+    return progress ** 3 * (progress * (progress * 6 - 15) + 10);
+  };
+  const applyScriptedNavigation = (now) => {
+    if (demo.mode !== "icebreaker" || !["selected", "returning"].includes(demo.phase)) return;
+    if (!demo.navStart) {
+      const startX = Number(data.qpos[freeQpos]);
+      const startY = Number(data.qpos[freeQpos + 1]);
+      const startYaw = baseYaw();
+      let targetX = 0, targetY = 0, targetYaw = 0;
+      if (demo.phase === "selected") {
+        const [podX, podY] = PODS[demo.selectedPod];
+        targetYaw = Math.atan2(-(podX - startX), podY - startY);
+        targetX = podX + Math.sin(targetYaw) * APPROACH_DISTANCE;
+        targetY = podY - Math.cos(targetYaw) * APPROACH_DISTANCE;
+      }
+      demo.navStarted = now;
+      demo.navStart = [startX, startY, startYaw];
+      demo.navTarget = [targetX, targetY, targetYaw];
+      demo.navLast = [...demo.navStart];
+      demo.navHeight = Number(data.qpos[freeQpos + 2]);
+    }
+    const progress = Math.min(1, (now - demo.navStarted) / (NAVIGATION_DURATION * 1000));
+    const eased = smoothstep(progress);
+    const [startX, startY, startYaw] = demo.navStart;
+    const [targetX, targetY, targetYaw] = demo.navTarget;
+    const yawDelta = wrapAngle(targetYaw - startYaw);
+    const x = startX + (targetX - startX) * eased;
+    const y = startY + (targetY - startY) * eased;
+    const yaw = startYaw + yawDelta * eased;
+    const [lastX, lastY, lastYaw] = demo.navLast;
+    const travel = Math.hypot(x - lastX, y - lastY);
+    const yawStep = wrapAngle(yaw - lastYaw);
+    data.qpos[wheelQpos[0]] -= (travel + yawStep * 0.002366) / 0.000933;
+    data.qpos[wheelQpos[1]] -= (travel - yawStep * 0.002366) / 0.000933;
+    data.qpos[freeQpos] = x;
+    data.qpos[freeQpos + 1] = y;
+    data.qpos[freeQpos + 2] = demo.navHeight;
+    data.qpos[freeQpos + 3] = Math.cos(yaw / 2);
+    data.qpos[freeQpos + 4] = 0;
+    data.qpos[freeQpos + 5] = 0;
+    data.qpos[freeQpos + 6] = Math.sin(yaw / 2);
+    haltBaseMotion();
+    demo.navLast = [x, y, yaw];
+    mujoco.mj_forward(model, data);
+    if (progress >= 1) {
+      if (demo.phase === "selected") {
+        demo.navigation = "arrived";
+        demo.arrivedAt = now;
+      } else {
+        demo.navigation = "home";
+      }
+    }
   };
 
   const updateMeshes = () => {
@@ -305,25 +446,30 @@ export async function createBrowserMujoco({ canvas }) {
   };
 
   const animate = (now) => {
-    applyControls(now);
+    updateDemoState(now);
+    updateDemoVisuals(now);
+    applyDemoControls(now);
     const targetTime = Number(data.time) + 1 / 60;
     while (Number(data.time) < targetTime) mujoco.mj_step(model, data);
+    applyScriptedNavigation(now);
+    reportDemoStatus(now);
     updateMeshes();
     renderer.render(scene, camera);
     frameId = requestAnimationFrame(animate);
   };
   mujoco.mj_forward(model, data);
   settleSimulation();
-  setAction(command);
+  updateDemoVisuals(performance.now());
   frameId = requestAnimationFrame(animate);
 
   return {
     setAction,
+    setScenario,
     reset() {
       mujoco.mj_resetData(model, data);
       mujoco.mj_forward(model, data);
       settleSimulation();
-      commandStarted = performance.now();
+      setScenario(demo.mode);
     },
     dispose() {
       cancelAnimationFrame(frameId);

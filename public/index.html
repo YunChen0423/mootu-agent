@@ -108,14 +108,18 @@
           <div class="mujoco-link" aria-live="polite">
             <div>
               <span id="mujocoDot" class="mujoco-dot"></span>
-              <div><strong id="mujocoStatus">完整模型 MuJoCo 加载中</strong><small id="mujocoDetail">未减面原始网格 · 无需本地程序</small></div>
+              <div><strong id="mujocoStatus">MooTu 互动演示加载中</strong><small id="mujocoDetail">run_interaction_demo.sh · 浏览器复刻</small></div>
             </div>
-            <button id="mujocoResetBtn" class="mujoco-button" type="button">重置仿真</button>
+            <div class="mujoco-demo-actions" aria-label="互动演示场景">
+              <button id="mujocoIcebreakerBtn" class="mujoco-button active" type="button">破冰接力</button>
+              <button id="mujocoVotingBtn" class="mujoco-button" type="button">投票收敛</button>
+              <button id="mujocoResetBtn" class="mujoco-button secondary" type="button">重新开始</button>
+            </div>
           </div>
           <div id="mujocoScreen" class="mujoco-screen">
             <canvas id="mujocoViewport" aria-label="MuJoCo 实时仿真画面"></canvas>
-            <div class="mujoco-placeholder"><span>MJ</span><strong>完整模型 MuJoCo 实时画面</strong><small>首次加载未减面原始网格后自动显示</small></div>
-            <div class="mujoco-screen-bar"><span><i></i> LIVE SIMULATION</span><b id="mujocoStrategy">observe</b></div>
+            <div class="mujoco-placeholder"><span>MJ</span><strong>MooTu 互动演示</strong><small>正在载入破冰与投票场景</small></div>
+            <div class="mujoco-screen-bar"><span><i></i> INTERACTION DEMO</span><b id="mujocoStrategy">破冰启动</b></div>
             <div id="agentSpeech" class="agent-speech" aria-live="polite"><small>MooTu 说</small><strong id="agentSpeechText"></strong></div>
           </div>
           <div class="robot-visual">

@@ -279,12 +279,14 @@ function setMujocoStatus(status, detail, connected = false) {
 }
 
 async function initBrowserMujoco() {
-  setMujocoStatus("完整模型 MuJoCo 加载中", "正在下载未减面的原始网格 · 无需本地程序", false);
+  setMujocoStatus("MooTu 互动演示加载中", "正在载入 run_interaction_demo.sh 场景", false);
   try {
-    state.mujocoRuntime = await createBrowserMujoco({ canvas: $("#mujocoViewport") });
+    state.mujocoRuntime = await createBrowserMujoco({
+      canvas: $("#mujocoViewport"),
+      onStatus: (label) => { $("#mujocoStrategy").textContent = label; }
+    });
     $("#mujocoScreen").classList.add("streaming");
-    setMujocoStatus("完整模型 MuJoCo 在线运行", "原始完整拓扑 · 浏览器内计算", true);
-    if (state.pendingMujocoAction) state.mujocoRuntime.setAction(state.pendingMujocoAction);
+    setMujocoStatus("MooTu 互动演示在线运行", "破冰接力与投票收敛 · 浏览器内计算", true);
   } catch (error) {
     setMujocoStatus("MuJoCo 加载失败", "请刷新页面或检查网络", false);
     console.error("MuJoCo WASM initialization failed", error);
@@ -297,7 +299,6 @@ function dispatchMujocoCommand(event, force = false, utterance = "") {
   if (!force && key === state.mujocoCommandKey) return;
   state.mujocoCommandKey = key;
   const action = state.config.core.strategies[event.strategy] || state.config.core.strategies.observe;
-  $("#mujocoStrategy").textContent = event.strategy;
   const command = {
     type: "mootu.command",
     version: 1,
@@ -736,6 +737,16 @@ async function runFullAgentAnalysis({ automatic = false } = {}) {
 
 $("#analyzeBtn").addEventListener("click", () => runFullAgentAnalysis({ automatic: false }));
 $("#mujocoResetBtn").addEventListener("click", () => state.mujocoRuntime?.reset());
+$("#mujocoIcebreakerBtn").addEventListener("click", () => {
+  state.mujocoRuntime?.setScenario("icebreaker");
+  $("#mujocoIcebreakerBtn").classList.add("active");
+  $("#mujocoVotingBtn").classList.remove("active");
+});
+$("#mujocoVotingBtn").addEventListener("click", () => {
+  state.mujocoRuntime?.setScenario("voting");
+  $("#mujocoVotingBtn").classList.add("active");
+  $("#mujocoIcebreakerBtn").classList.remove("active");
+});
 $("#jsonBtn").addEventListener("click", () => $("#jsonDialog").showModal());
 $("#configBtn").addEventListener("click", () => $("#configDialog").showModal());
 $$("[data-close]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
