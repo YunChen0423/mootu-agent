@@ -206,7 +206,15 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
   };
   let frameId = 0;
   let running = false;
+  let pauseAfterInvitation = false;
   let pausedAt = performance.now();
+
+  const stopAnimationLoop = (now = performance.now()) => {
+    running = false;
+    pauseAfterInvitation = false;
+    pausedAt = now;
+    cancelAnimationFrame(frameId);
+  };
 
   const setControl = (name, value) => {
     const id = actuators[name];
@@ -302,6 +310,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     mujoco.mj_forward(model, data);
     settleSimulation();
     setScenario("discussion");
+    if (pauseAfterInvitation) stopAnimationLoop();
     return speakers.map((speaker, index) => ({ speaker, pod: index + 1 }));
   };
   const focusSpeaker = (speakerId, { attentionMode = "passive", invitationId = null } = {}) => {
@@ -597,6 +606,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
       clearNavigation();
       if (resumeScenario) setScenario(resumeScenario, { force: true });
       else if (resumeAction) setAction(resumeAction, { force: true });
+      if (completedKind === "invite-return" && pauseAfterInvitation) stopAnimationLoop(now);
     }
   };
 
@@ -674,7 +684,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     reportDemoStatus(now);
     updateMeshes();
     renderer.render(scene, camera);
-    frameId = requestAnimationFrame(animate);
+    if (running) frameId = requestAnimationFrame(animate);
   };
   mujoco.mj_forward(model, data);
   settleSimulation();
@@ -707,9 +717,13 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     focusSpeaker,
     setPlaying(active) {
       const nextRunning = Boolean(active);
-      if (nextRunning === running) return;
       const now = performance.now();
       if (nextRunning) {
+        if (pauseAfterInvitation) {
+          pauseAfterInvitation = false;
+          return;
+        }
+        if (running) return;
         const pausedDuration = now - pausedAt;
         demo.phaseStarted += pausedDuration;
         if (demo.navStarted != null) demo.navStarted += pausedDuration;
@@ -717,9 +731,12 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
         running = true;
         frameId = requestAnimationFrame(animate);
       } else {
-        running = false;
-        pausedAt = now;
-        cancelAnimationFrame(frameId);
+        if (!running) return;
+        if (invitationInProgress()) {
+          pauseAfterInvitation = true;
+          return;
+        }
+        stopAnimationLoop(now);
       }
     },
     reset() {
@@ -731,6 +748,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
       mujoco.mj_forward(model, data);
       settleSimulation();
       setScenario("discussion", { force: true });
+      if (pauseAfterInvitation) stopAnimationLoop();
     },
     dispose() {
       cancelAnimationFrame(frameId);

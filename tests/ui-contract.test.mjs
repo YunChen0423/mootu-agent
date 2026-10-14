@@ -254,6 +254,10 @@ test("discussion embodiment is gentle, channel-aligned, and keeps pod geometry s
   assert.match(browserMujoco, /const invitationInProgress = \(\) => Boolean\(demo\.activeInvitationId\)/);
   assert.match(browserMujoco, /action\?\.attention_mode !== "invite"/);
   assert.match(browserMujoco, /demo\.invitationCooldownUntil = now \+ INVITATION_COOLDOWN_MS/);
+  assert.match(browserMujoco, /let pauseAfterInvitation = false/);
+  assert.match(browserMujoco, /if \(invitationInProgress\(\)\) \{\s*pauseAfterInvitation = true;\s*return;/);
+  assert.match(browserMujoco, /completedKind === "invite-return" && pauseAfterInvitation/);
+  assert.match(browserMujoco, /if \(running\) frameId = requestAnimationFrame\(animate\)/);
   assert.match(browserMujoco, /clearNavigation\(\);\s*if \(resumeScenario\)/);
   assert.match(browserMujoco, /邀请 \$\{speaker\} 发言/);
   assert.match(browserMujoco, /正在发言 · 保持中心并头颈朝向/);
