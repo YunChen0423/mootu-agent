@@ -74,23 +74,48 @@ export function sanitizeEvents(rawEvents, observations, participants, config) {
   let convergenceVotes = 0;
   const events = observations.map((observation, index) => {
     const raw = rawEvents.find((item) => Math.abs(Number(item.time) - observation.time) <= 2) || rawEvents[index] || {};
-    const recommendation = raw.stage_recommendation === "converge" || raw.stage === "converge" || observation.suggestedStage === "converge" ? "converge" : "diverge";
+    const resetAfterIcebreaker = observation.diagnostics.discussion_start_seconds > 0;
+    const discussionWarmup = resetAfterIcebreaker && observation.diagnostics.discussion_elapsed_seconds < config.thresholds.quiet_member_seconds;
+    const recommendation = !discussionWarmup && (raw.stage_recommendation === "converge" || raw.stage === "converge" || observation.suggestedStage === "converge") ? "converge" : "diverge";
+    const priorStage = stage;
     if (stage === "diverge" && index > 0) {
       convergenceVotes = recommendation === "converge" ? convergenceVotes + 1 : 0;
       if (convergenceVotes >= 2) stage = "converge";
     }
     const cooldown = observation.time - lastIntervention < config.thresholds.intervention_cooldown_seconds;
-    const selection = selectCandidate(raw, ids, config, { forceObserve: index === 0, cooldown });
-    const { selected } = selection;
+    const selection = selectCandidate(raw, ids, config, { forceObserve: index === 0 || discussionWarmup, cooldown });
+    let selected = selection.selected;
+    let decisionReason = discussionWarmup ? "破冰结束后重新建立讨论基线，暂不沿用破冰阶段的沉默、参与或阶段判断。" : selection.reason;
+    let forcedByHarness = false;
+    const forcedCandidate = (strategy, target, title, rationale, utterance) => normalizeCandidate({ strategy, target, title, rationale, utterance, benefit: 95, disruption: 12, goal_fit: 96, confidence: 92, follow_up: "观察下一窗口是否出现更明确的比较与更均衡的参与", expected_effect: "推动讨论按当前阶段目标继续" }, ids, config);
+    const justConverged = priorStage === "diverge" && stage === "converge";
+    const quietEvidenceReady = observation.diagnostics.discussion_elapsed_seconds >= config.thresholds.quiet_member_seconds
+      && observation.diagnostics.quiet_seconds >= config.thresholds.quiet_member_seconds
+      && observation.diagnostics.quiet_share < 0.12;
+    if (selected.strategy === "observe" && justConverged) {
+      selected = forcedCandidate("prepare_convergence", null, "提示开始收敛", "阶段已经切换到收敛，但讨论仍保持高发散，需要明确发出阶段提示。", "我们已经有几个方向了，现在开始收敛，一起比较各方案的价值、成本和可行性。");
+      decisionReason = "Harness 检测到发散→收敛切换，必须向小组明确播报阶段目标。";
+      forcedByHarness = true;
+    } else if (selected.strategy === "observe" && !cooldown && quietEvidenceReady) {
+      const target = observation.diagnostics.quiet_target;
+      selected = forcedCandidate("invite_quiet_member", target, `邀请 ${target} 补充意见`, `${target} 在讨论开始后的观察窗口内参与明显偏低；即使讨论持续流动，也需要给其发言入口。`, `${target}，讨论在继续，也想听听你的判断。你更支持哪个方向？`);
+      decisionReason = `Harness 检测到 ${target} 在讨论开始后的持续低参与，不以全场是否有人讲话作为邀请条件。`;
+      forcedByHarness = true;
+    } else if (selected.strategy === "observe" && !cooldown && stage === "converge" && observation.metrics.diversity >= 67) {
+      selected = forcedCandidate("advance_decision", null, "提醒聚焦比较", "当前已处于收敛阶段，但新想法仍持续增加，需要把讨论拉回比较与取舍。", "现在先暂停增加新方向，请围绕现有方案比较价值、成本和可行性。");
+      decisionReason = "Harness 检测到收敛阶段仍保持高发散，主动发出聚焦提示。";
+      forcedByHarness = true;
+    }
     if (selected.strategy !== "observe") lastIntervention = observation.time;
     const evidence = (Array.isArray(raw.evidence) ? raw.evidence : observation.evidence).map((item) => text(item)).filter(Boolean).slice(0, 3);
     const utterance = selected.strategy === "observe" ? "" : text(selected.utterance, generateContextualUtterance({ strategy: selected.strategy, target: selected.target, stage, transcript: observation.recentTranscript })).slice(0, 80);
     return {
       time: observation.time, stage, stageRecommendation: recommendation, stageVotes: convergenceVotes,
       strategy: selected.strategy, target: selected.target, title: selected.title,
-      reason: selection.reason.slice(0, 220), evidence: evidence.length ? evidence : observation.evidence,
+      reason: decisionReason.slice(0, 220), evidence: evidence.length ? evidence : observation.evidence,
       missingEvidence: selection.missingEvidence, confidence: selected.confidence,
-      candidates: selection.candidates, selectionMargin: selection.margin,
+      candidates: forcedByHarness ? [selected, ...selection.candidates.filter((candidate) => candidate.strategy !== selected.strategy)] : selection.candidates,
+      selectionMargin: forcedByHarness ? Math.max(8, selected.utility - (selection.candidates.find((candidate) => candidate.strategy === "observe")?.utility || 0)) : selection.margin,
       followUp: selected.followUp, expectedEffect: selected.expectedEffect, utterance,
       metrics: observation.metrics, diagnostics: observation.diagnostics,
       decisionSource: "deepseek+pi-harness", reflection: ""

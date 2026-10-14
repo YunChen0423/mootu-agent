@@ -67,11 +67,17 @@ function keywordLabel(text) {
   return fallback.replace(/^(?:可以是|可以做|先做|做一个|变成|就是)/, "").slice(0, 8);
 }
 
-function extractCandidates(events, time) {
+function extractCandidates(events, time, synthesizedCandidates = []) {
   const visible = events.filter((event) => event.start <= time);
   const numberedCandidates = (text) => [...text.matchAll(/[一二三1-3][、，,:：]\s*([^；;。]+)/g)];
   const source = [...visible].reverse().find((event) => event.type === EVENT_TYPES.ROBOT_UTTERANCE && numberedCandidates(event.text).length >= 2);
   if (!source) {
+    const synthesized = synthesizedCandidates.map((label) => String(label || "").trim()).filter((label) => label.length >= 2 && label.length <= 8).slice(0, 4);
+    if (synthesized.length >= 2) return Object.freeze({
+      version: 1,
+      status: "ai_synthesized",
+      items: Object.freeze(synthesized.map((label, index) => Object.freeze({ id: `ai-option-${index + 1}`, label, source: "deepseek" })))
+    });
     const participantIdeas = visible.filter((event) => event.type === EVENT_TYPES.PARTICIPANT_UTTERANCE && event.text.length >= 8);
     const stableWindowEnd = Math.max(3, Math.floor(participantIdeas.length / 6) * 6);
     const stableIdeas = participantIdeas.slice(0, stableWindowEnd);
@@ -95,15 +101,19 @@ function extractCandidates(events, time) {
 }
 
 function buildBoundaries(events) {
-  const firstParticipant = findStart(events, (event) => event.type === EVENT_TYPES.PARTICIPANT_UTTERANCE);
+  const participantEvents = events.filter((event) => event.type === EVENT_TYPES.PARTICIPANT_UTTERANCE);
+  const firstParticipant = participantEvents[0]?.start ?? null;
   const explicitIcebreaker = findStart(events, (event) => includesAny(event.text, [/击鼓传花/, /接力/, /破冰/]));
   const silenceIcebreaker = firstParticipant != null && firstParticipant >= ICEBREAKER_SILENCE_TRIGGER_SECONDS ? ICEBREAKER_SILENCE_TRIGGER_SECONDS : null;
   const icebreaker = explicitIcebreaker == null ? silenceIcebreaker : silenceIcebreaker == null ? explicitIcebreaker : Math.min(explicitIcebreaker, silenceIcebreaker);
+  const afterIcebreaker = icebreaker == null ? [] : participantEvents.filter((event) => event.start >= icebreaker);
+  const discussion = icebreaker == null ? firstParticipant : (afterIcebreaker[1]?.start ?? afterIcebreaker[0]?.end ?? firstParticipant);
   const ballotPreparation = findStart(events, (event) => includesAny(event.text, [/讨论即将结束/, /整理.{0,6}(?:候选|方案)/, /三个(?:候选|选择|方案)/]));
-  const voting = findStart(events, (event) => includesAny(event.text, [/请.{0,8}(?:pod|Pod).{0,6}投票/, /显示.{0,8}(?:选项|方案)/, /开始投票/, /按下.{0,8}(?:pod|Pod)/]));
-  const resultConfirmation = findStart(events, (event) => includesAny(event.text, [/投票结束/, /公布.{0,6}结果/, /一致选择/, /最终选择/])) ;
+  const workflowEvents = events.filter((event) => [EVENT_TYPES.ROBOT_UTTERANCE, EVENT_TYPES.DEVICE_EVENT].includes(event.type));
+  const voting = findStart(workflowEvents, (event) => includesAny(event.text, [/请.{0,8}(?:pod|Pod).{0,6}投票/, /显示.{0,8}(?:选项|方案)/, /开始投票/, /按下.{0,8}(?:pod|Pod)/]));
+  const resultConfirmation = findStart(workflowEvents, (event) => includesAny(event.text, [/投票结束/, /公布.{0,6}结果/, /一致选择/, /最终选择/])) ;
   const closed = findStart(events, (event) => includesAny(event.text, [/讨论到这里结束/, /今天.{0,8}结束/, /本次.{0,8}结束/, /会话结束/]));
-  return Object.freeze({ icebreaker, discussion: firstParticipant, ballotPreparation, voting, resultConfirmation, closed });
+  return Object.freeze({ icebreaker, discussion, ballotPreparation, voting, resultConfirmation, closed });
 }
 
 function phaseAt(boundaries, time) {
@@ -130,12 +140,13 @@ function parseVoteLedger(events, time) {
 }
 
 export class SessionHarness {
-  constructor({ transcript = [], participants = [] } = {}) {
+  constructor({ transcript = [], participants = [], candidateIdeas = [] } = {}) {
     this.eventLog = Object.freeze(annotateTranscript(transcript));
     const detected = participantSpeakers(this.eventLog);
     const supplied = new Map(participants.map((participant) => [participant.id, participant]));
     this.participants = Object.freeze(detected.map((id) => Object.freeze(supplied.get(id) || { id, name: id })));
     this.boundaries = buildBoundaries(this.eventLog);
+    this.candidateIdeas = Object.freeze([...candidateIdeas]);
     this.transitionHistory = [];
     this.votingCandidates = null;
     this.blackboard = Object.freeze({});
@@ -149,7 +160,7 @@ export class SessionHarness {
     if (previousPhase && previousPhase !== phase) this.transitionHistory.push(Object.freeze({ from: previousPhase, to: phase, at: safeTime }));
     const currentEvent = [...this.eventLog].reverse().find((event) => event.start <= safeTime) || null;
     const owner = ownerForPhase(phase);
-    const liveCandidates = extractCandidates(this.eventLog, safeTime);
+    const liveCandidates = extractCandidates(this.eventLog, safeTime, this.candidateIdeas);
     const hasEnteredVoting = [SESSION_PHASES.VOTING, SESSION_PHASES.RESULT_CONFIRMATION, SESSION_PHASES.CLOSED].includes(phase);
     if (hasEnteredVoting && !this.votingCandidates) this.votingCandidates = liveCandidates;
     const candidates = hasEnteredVoting ? this.votingCandidates : liveCandidates;

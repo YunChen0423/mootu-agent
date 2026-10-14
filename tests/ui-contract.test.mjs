@@ -254,6 +254,7 @@ test("speaker and encouragement targets use distinct pod signals", () => {
   assert.match(browserMujoco, /invitationPulse/);
   assert.match(browserMujoco, /demo\.attentionMode === "invite" \? invitedColor : SPEAKING/);
   assert.match(app, /classList\.toggle\("targeted", Boolean\(invitedTarget\)\)/);
+  assert.match(browserMujoco, /demo\.round = Math\.floor\(Math\.random\(\) \* demo\.activePods\.length\)/);
   assert.match(enhancements, /\.pod-section\.targeted \.pod-row/);
 });
 
@@ -284,6 +285,8 @@ test("MuJoCo overlays participant labels, speech, and voting candidates", () => 
   assert.match(app, /function renderMujocoParticipantLabels/);
   assert.match(app, /function renderMujocoCandidates/);
   assert.match(app, /当前投票方案/);
+  assert.match(app, /DeepSeek 综合/);
+  assert.match(app, /发言确认/);
   assert.match(enhancements, /\.mujoco-participant-labels span/);
   assert.match(enhancements, /\.mujoco-candidates/);
   assert.match(app, /function renderMujocoPausedStatus/);

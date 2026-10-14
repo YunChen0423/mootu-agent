@@ -20,8 +20,9 @@ function similarity(left, right) {
   return intersection / (a.size + b.size - intersection);
 }
 
-function participationAt(transcript, speakers, time, windowSeconds) {
-  const start = Math.max(0, time - windowSeconds);
+function participationAt(transcript, speakers, time, windowSeconds, discussionStart = 0) {
+  const baseline = Math.max(0, Number(discussionStart) || 0);
+  const start = Math.max(baseline, time - windowSeconds);
   const totals = Object.fromEntries(speakers.map((speaker) => [speaker, 0]));
   const turnCounts = Object.fromEntries(speakers.map((speaker) => [speaker, 0]));
   transcript.forEach((line) => {
@@ -42,14 +43,14 @@ function participationAt(transcript, speakers, time, windowSeconds) {
   const score = Math.round(durationScore * 0.7 + turnScore * 0.3);
   const quietTarget = [...speakers].sort((a, b) => (shares[a] * 0.7 + turnShares[a] * 0.3) - (shares[b] * 0.7 + turnShares[b] * 0.3))[0];
   const lastSpoken = Object.fromEntries(speakers.map((speaker) => {
-    const lines = transcript.filter((line) => line.speaker === speaker && line.start <= time);
-    return [speaker, lines.length ? Math.max(...lines.map((line) => line.end)) : 0];
+    const lines = transcript.filter((line) => line.speaker === speaker && line.start >= baseline && line.start <= time);
+    return [speaker, lines.length ? Math.max(...lines.map((line) => line.end)) : baseline];
   }));
-  return { score, durationScore, turnScore, totals, shares, turnCounts, turnShares, quietTarget, silenceSince: time - lastSpoken[quietTarget] };
+  return { score, durationScore, turnScore, totals, shares, turnCounts, turnShares, quietTarget, silenceSince: Math.max(0, time - lastSpoken[quietTarget]) };
 }
 
-function flowAt(transcript, time, windowSeconds, thresholds) {
-  const start = Math.max(0, time - windowSeconds);
+function flowAt(transcript, time, windowSeconds, thresholds, discussionStart = 0) {
+  const start = Math.max(Number(discussionStart) || 0, time - windowSeconds);
   const recent = transcript.filter((line) => line.start <= time && line.end >= start).sort((a, b) => a.start - b.start);
   const lastEnd = recent.length ? Math.min(time, Math.max(...recent.map((line) => line.end))) : start;
   const currentSilence = Math.max(0, time - lastEnd);
@@ -61,9 +62,9 @@ function flowAt(transcript, time, windowSeconds, thresholds) {
   return { score, currentSilence, averageGap, turnCount: recent.length };
 }
 
-function diversityAt(transcript, time, windowSeconds) {
+function diversityAt(transcript, time, windowSeconds, discussionStart = 0) {
   const ideaCue = /(可以|也许|或者|比如|方向|方案|设计|想到|尝试|如果|不一定)/;
-  const earlier = transcript.filter((line) => line.start <= time);
+  const earlier = transcript.filter((line) => line.start >= discussionStart && line.start <= time);
   const recent = earlier.filter((line) => line.end >= Math.max(0, time - windowSeconds));
   const ideaLines = earlier.filter((line) => ideaCue.test(line.text));
   const recentIdeas = recent.filter((line) => ideaCue.test(line.text));
@@ -113,7 +114,7 @@ function evidenceFor({ participation, diversity, flow, stage, target, semantic }
   return evidence.slice(0, 3);
 }
 
-export function buildObservations({ transcript, participants = [], duration, config, semantic = null }) {
+export function buildObservations({ transcript, participants = [], duration, config, semantic = null, discussionStart = 0 }) {
   const sorted = [...transcript].sort((a, b) => a.start - b.start);
   const speakers = participants.length ? participants.map((participant) => participant.id) : [...new Set(sorted.map((line) => line.speaker))];
   if (!sorted.length) throw new Error("逐字稿不能为空");
@@ -127,9 +128,9 @@ export function buildObservations({ transcript, participants = [], duration, con
   else checkpoints.push(endTime);
 
   return checkpoints.map((time) => {
-    const participation = participationAt(sorted, speakers, time, thresholds.window_seconds);
-    const flow = flowAt(sorted, time, thresholds.window_seconds, thresholds);
-    const diversity = diversityAt(sorted, time, thresholds.window_seconds);
+    const participation = participationAt(sorted, speakers, time, thresholds.window_seconds, discussionStart);
+    const flow = flowAt(sorted, time, thresholds.window_seconds, thresholds, discussionStart);
+    const diversity = diversityAt(sorted, time, thresholds.window_seconds, discussionStart);
     const semanticWindow = semanticAt(semantic, time);
     if (semanticWindow?.idea_diversity != null) diversity.score = clamp(Math.round((diversity.score + Number(semanticWindow.idea_diversity)) / 2));
     const stageByTime = time >= thresholds.converge_after_seconds || time / endTime >= 0.68;
@@ -140,7 +141,7 @@ export function buildObservations({ transcript, participants = [], duration, con
       metrics: { participation: participation.score, diversity: diversity.score, flow: flow.score },
       evidence: time === 0 ? ["讨论尚未开始，Agent 暂不介入。"] : evidenceFor({ participation, diversity, flow, stage: suggestedStage, target: participation.quietTarget, semantic: semanticWindow }),
       recentTranscript,
-      diagnostics: { speaking_seconds: participation.totals, turn_counts: participation.turnCounts, participation_basis: "70% speaking duration + 30% turn count", quiet_target: participation.quietTarget, quiet_seconds: Math.round(participation.silenceSince), current_silence_seconds: Math.round(flow.currentSilence), idea_count: diversity.ideaCount, recent_novelty: Number(diversity.novelty.toFixed(2)) }
+      diagnostics: { speaking_seconds: participation.totals, turn_counts: participation.turnCounts, participation_basis: "70% speaking duration + 30% turn count", quiet_target: participation.quietTarget, quiet_share: Number(((participation.shares[participation.quietTarget] || 0) * 0.7 + (participation.turnShares[participation.quietTarget] || 0) * 0.3).toFixed(3)), quiet_seconds: Math.round(participation.silenceSince), discussion_start_seconds: Math.max(0, Math.round(discussionStart)), discussion_elapsed_seconds: Math.max(0, Math.round(time - discussionStart)), current_silence_seconds: Math.round(flow.currentSilence), idea_count: diversity.ideaCount, recent_novelty: Number(diversity.novelty.toFixed(2)) }
     };
   });
 }
@@ -163,22 +164,22 @@ function chooseDecision(context) {
   return { strategy: "observe", title: "保持观察", followUp: "讨论仍在有效推进，避免不必要的打断" };
 }
 
-export function runAgent({ transcript, participants = [], duration, config, semantic = null }) {
+export function runAgent({ transcript, participants = [], duration, config, semantic = null, discussionStart = 0 }) {
   const sorted = [...transcript].sort((a, b) => a.start - b.start);
   const speakers = participants.length ? participants.map((participant) => participant.id) : [...new Set(sorted.map((line) => line.speaker))];
   if (!sorted.length) throw new Error("逐字稿不能为空");
   if (!speakers.length) throw new Error("至少需要一位参与者");
   const endTime = duration || Math.max(...sorted.map((line) => line.end));
   const thresholds = config.thresholds;
-  const observations = buildObservations({ transcript: sorted, participants, duration: endTime, config, semantic });
+  const observations = buildObservations({ transcript: sorted, participants, duration: endTime, config, semantic, discussionStart });
 
   let previousStage = "diverge";
   let lastInterventionTime = -Infinity;
   const events = observations.map((observation, index) => {
     const { time, suggestedStage: stage } = observation;
-    const participation = participationAt(sorted, speakers, time, thresholds.window_seconds);
-    const flow = flowAt(sorted, time, thresholds.window_seconds, thresholds);
-    const diversity = diversityAt(sorted, time, thresholds.window_seconds);
+    const participation = participationAt(sorted, speakers, time, thresholds.window_seconds, discussionStart);
+    const flow = flowAt(sorted, time, thresholds.window_seconds, thresholds, discussionStart);
+    const diversity = diversityAt(sorted, time, thresholds.window_seconds, discussionStart);
     const decision = index === 0
       ? { strategy: "observe", title: "等待讨论自然启动", followUp: "继续收集发言与想法证据" }
       : chooseDecision({ time, stage, previousStage, participation, diversity, flow, thresholds, lastInterventionTime });

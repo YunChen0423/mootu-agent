@@ -7,6 +7,7 @@ export async function runAIAgent({
   transcript,
   participants = [],
   duration,
+  discussionStart = 0,
   config,
   apiKey = defaultEnv("DEEPSEEK_API_KEY"),
   baseUrl = defaultEnv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
@@ -15,10 +16,10 @@ export async function runAIAgent({
   modelDefinition
 }) {
   if (!apiKey && !streamFn) {
-    const analysis = runAgent({ transcript, participants, duration, config });
+    const analysis = runAgent({ transcript, participants, duration, discussionStart, config });
     return { mode: "fallback", model, architecture: "pi", analysis, events: analysis.events, trace: [] };
   }
-  const observations = buildObservations({ transcript, participants, duration, config });
+  const observations = buildObservations({ transcript, participants, duration, discussionStart, config });
   const { analysis, trace, execution } = await runPiBatchAgent({ observations, participants, config, apiKey, baseUrl, model, streamFn, modelDefinition });
   return { mode: "deepseek", model, architecture: "pi", analysis, events: analysis.events, trace, execution };
 }

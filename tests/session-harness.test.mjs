@@ -30,7 +30,8 @@ test("session harness maps five participants to five pods and derives the full j
   const harness = createSessionHarness({ transcript, participants: participantSpeakers(transcript).map((id) => ({ id, name: id })) });
   assert.equal(harness.setTime(0).phase, SESSION_PHASES.WAITING);
   assert.equal(harness.setTime(24).phase, SESSION_PHASES.ICEBREAKER);
-  assert.equal(harness.setTime(55).phase, SESSION_PHASES.DISCUSSION);
+  assert.equal(harness.setTime(55).phase, SESSION_PHASES.ICEBREAKER);
+  assert.equal(harness.setTime(60).phase, SESSION_PHASES.DISCUSSION);
   assert.equal(harness.setTime(894).phase, SESSION_PHASES.BALLOT_PREPARATION);
   assert.equal(harness.blackboard.activeAgent, "discussion_facilitator");
   assert.equal(harness.blackboard.discussionStage, "converge");
@@ -74,6 +75,24 @@ test("candidate synthesis evolves in parallel with discussion without reading fu
   assert.ok(early.candidates.items.length > 0);
   assert.ok(early.candidates.items.every((item) => item.label.length <= 8));
   assert.equal(early.candidates.items.some((item) => item.label.includes("真实声音")), false);
+});
+
+test("DeepSeek candidate names replace transcript fragments until the explicit ballot is spoken", () => {
+  const harness = createSessionHarness({ transcript, candidateIdeas: ["感官集章", "声音AI合成", "秘密任务"] });
+  assert.deepEqual(harness.setTime(700, "converge").candidates.items.map((item) => item.label), ["感官集章", "声音AI合成", "秘密任务"]);
+  assert.ok(harness.setTime(700).candidates.items.every((item) => item.source === "deepseek"));
+  assert.deepEqual(harness.setTime(904).candidates.items.map((item) => item.label), ["感官集章", "真实声音", "秘密任务"]);
+});
+
+test("participant questions about voting do not prematurely enter or freeze the ballot", () => {
+  const earlyVoteQuestion = annotateTranscript([
+    ...transcript.slice(0, 9),
+    { start: 500, end: 510, speaker: "E", text: "屏幕会显示哪个方案，我们按 Pod 吗？" },
+    ...transcript.slice(9)
+  ]);
+  const harness = createSessionHarness({ transcript: earlyVoteQuestion, candidateIdeas: ["感官集章", "声音AI合成", "秘密任务"] });
+  assert.notEqual(harness.setTime(500, "converge").phase, SESSION_PHASES.VOTING);
+  assert.equal(harness.setTime(904).phase, SESSION_PHASES.VOTING);
 });
 
 test("voting freezes one candidate snapshot through result confirmation", () => {

@@ -5,7 +5,7 @@ import { createSessionHarness, annotateTranscript, participantSpeakers, EVENT_TY
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const state = { session: null, config: null, events: [], sessionHarness: null, macroPhase: null, agentTrace: [], agentExecution: null, screenTopic: "", time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoRuntime: null, pendingMujocoAction: null, mujocoCommandKey: null };
+const state = { session: null, config: null, events: [], sessionHarness: null, macroPhase: null, agentTrace: [], agentExecution: null, screenTopic: "", voteCandidates: [], time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoRuntime: null, pendingMujocoAction: null, mujocoCommandKey: null };
 state.currentBlackboard = null;
 
 const formatTime = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
@@ -51,13 +51,13 @@ async function load() {
   ]);
   state.session.transcript = annotateTranscript(state.session.transcript);
   state.screenTopic = normalizeScreenTopic(String(state.session.title || "").replace(/(?:创意)?讨论$/, ""));
-  state.sessionHarness = createSessionHarness(state.session);
+  state.sessionHarness = createSessionHarness({ ...state.session, candidateIdeas: state.voteCandidates });
   configureMujocoParticipants();
   const status = await fetch("/api/status").then((r) => r.json()).catch(() => ({ mode: "fallback" }));
   state.model = status.mode;
   $("#modelBadge").classList.toggle("fallback", status.mode !== "deepseek");
   $("#modelBadge").innerHTML = `<i></i>${status.mode === "deepseek" ? `DeepSeek AI Agent · 已连接` : "AI 未配置 · 安全回退"}`;
-  state.events = runAgent({ transcript: discussionTranscript(), participants: state.session.participants, duration: state.session.duration, config: state.config }).events;
+  state.events = runAgent({ transcript: discussionTranscript(), participants: state.session.participants, duration: state.session.duration, discussionStart: state.sessionHarness.boundaries.discussion, config: state.config }).events;
   renderStatic();
   setTime(0);
   if (state.model === "deepseek") void runFullAgentAnalysis({ automatic: true });
@@ -187,7 +187,8 @@ function renderMujocoCandidates(blackboard) {
     return;
   }
   const items = blackboard.candidates?.items?.slice(0, 4) || [];
-  panel.innerHTML = `<small>${blackboard.phase === SESSION_PHASES.RESULT_CONFIRMATION ? "投票结果" : "当前投票方案"}</small><div>${items.length
+  const sourceLabel = blackboard.candidates?.status === "ai_synthesized" ? "DeepSeek 综合" : "发言确认";
+  panel.innerHTML = `<small>${blackboard.phase === SESSION_PHASES.RESULT_CONFIRMATION ? "投票结果" : `当前投票方案 · ${sourceLabel}`}</small><div>${items.length
     ? items.map((item, index) => `<span><b>${String.fromCharCode(65 + index)}</b>${escapeHtml(item.label)}</span>`).join("")
     : "<span>候选方案整理中</span>"}</div>`;
 }
@@ -421,13 +422,14 @@ function loadImportedTranscript(lines, fileName) {
   state.session.transcript = lines;
   state.session.participants = speakers.map((speaker, index) => ({ id: speaker, name: speaker, color: palette[index % palette.length] }));
   state.session.duration = Math.max(...lines.map((line) => line.end)) + 5;
-  state.sessionHarness = createSessionHarness(state.session);
+  state.voteCandidates = [];
+  state.sessionHarness = createSessionHarness({ ...state.session, candidateIdeas: state.voteCandidates });
   state.macroPhase = null;
   state.lastTranscriptKey = null;
   state.screenTopic = "讨论主题提炼中";
   state.utteranceCache.clear();
   state.utteranceRequests.clear();
-  state.events = runAgent({ transcript: discussionTranscript(), participants: state.session.participants, duration: state.session.duration, config: state.config }).events;
+  state.events = runAgent({ transcript: discussionTranscript(), participants: state.session.participants, duration: state.session.duration, discussionStart: state.sessionHarness.boundaries.discussion, config: state.config }).events;
   renderStatic();
   configureMujocoParticipants();
   setTime(0);
@@ -937,11 +939,13 @@ async function runFullAgentAnalysis({ automatic = false } = {}) {
   $("#candidateSummary").textContent = "生成并比较候选策略…";
   $("#toolTrace").textContent = "等待 pi Agent 调用工具…";
   try {
-    const result = await fetch("/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ transcript: discussionTranscript(), participants: state.session.participants, duration: state.session.duration }) }).then(async (r) => { if (!r.ok) throw new Error((await r.json()).error); return r.json(); });
+    const result = await fetch("/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ transcript: discussionTranscript(), participants: state.session.participants, duration: state.session.duration, discussionStart: state.sessionHarness.boundaries.discussion }) }).then(async (r) => { if (!r.ok) throw new Error((await r.json()).error); return r.json(); });
     if (requestId !== state.analysisRequestId) return;
     state.events = result.events;
     const topicCandidates = [result.analysis?.screenTopic, ...(result.analysis?.ideaClusters || []), state.screenTopic];
     state.screenTopic = topicCandidates.map(normalizeScreenTopic).find(Boolean) || "讨论主题提炼中";
+    state.voteCandidates = (result.analysis?.voteCandidates || []).map(normalizeScreenTopic).filter(Boolean).slice(0, 4);
+    state.sessionHarness = createSessionHarness({ ...state.session, candidateIdeas: state.voteCandidates });
     state.agentTrace = result.trace || [];
     state.agentExecution = result.execution || null;
     renderStatic();
@@ -954,7 +958,7 @@ async function runFullAgentAnalysis({ automatic = false } = {}) {
   } catch (error) {
     if (requestId !== state.analysisRequestId) return;
     if (state.model !== "deepseek") {
-      const local = runAgent({ transcript: discussionTranscript(), participants: state.session.participants, duration: state.session.duration, config: state.config });
+      const local = runAgent({ transcript: discussionTranscript(), participants: state.session.participants, duration: state.session.duration, discussionStart: state.sessionHarness.boundaries.discussion, config: state.config });
       state.events = local.events;
       state.agentTrace = [];
       state.agentExecution = null;

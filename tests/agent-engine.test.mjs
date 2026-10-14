@@ -34,6 +34,22 @@ test("a persistently quiet member is invited after enough observable evidence", 
   assert.ok(result.events.some((event) => event.strategy === "invite_quiet_member" && event.target === "C"));
 });
 
+test("icebreaker silence is reset before low-participation invitations", () => {
+  const transcript = [
+    { start: 55, end: 59, speaker: "A", text: "轮到我了，我先说。" },
+    { start: 60, end: 76, speaker: "A", text: "我们可以先做声音收集。" },
+    { start: 77, end: 94, speaker: "B", text: "也可以加入实体互动。" },
+    { start: 95, end: 112, speaker: "A", text: "还可以把声音组合成音乐。" },
+    { start: 113, end: 132, speaker: "B", text: "或者增加不同摊位任务。" },
+    { start: 133, end: 155, speaker: "A", text: "继续比较这些方向的可行性。" }
+  ];
+  const participants = ["A", "B", "C"].map((id) => ({ id, name: id }));
+  const result = runAgent({ transcript, participants, duration: 180, discussionStart: 60, config });
+  assert.equal(result.events.find((event) => event.time >= 60).diagnostics.discussion_start_seconds, 60);
+  assert.equal(result.events.filter((event) => event.time < 130).some((event) => event.strategy === "invite_quiet_member"), false);
+  assert.ok(result.events.some((event) => event.time >= 130 && event.strategy === "invite_quiet_member" && event.target === "C"));
+});
+
 test("intervention utterances reuse the latest discussion content", () => {
   const utterance = generateContextualUtterance({
     strategy: "open_new_direction",

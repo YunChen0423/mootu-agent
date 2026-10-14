@@ -164,7 +164,8 @@ export function createBatchToolset({ observations, participants, memory = [], co
         const screenTopic = [params.screen_topic, ...(params.idea_clusters || [])]
           .map((value) => String(value || "").replace(/[。！？；;，,].*$/, "").replace(/^(?:讨论|关于|主题)[：:\s]*/, "").trim())
           .find((value) => value.length >= 3 && value.length <= 8 && !/[吗呢么？?]$/.test(value)) || "";
-        state.analysis = { summary: String(params.summary).slice(0, 300), screenTopic, ideaClusters: params.idea_clusters || [], events };
+        const voteCandidates = [...new Set((params.vote_candidates || []).map((value) => String(value || "").trim()).filter((value) => value.length >= 2 && value.length <= 8))].slice(0, 4);
+        state.analysis = { summary: String(params.summary).slice(0, 300), screenTopic, ideaClusters: params.idea_clusters || [], voteCandidates, events };
         return jsonResult(events.map(({ time, strategy, target, confidence, selectionMargin }) => ({ time, strategy, target, confidence, selectionMargin })), { count: events.length });
       }
     }

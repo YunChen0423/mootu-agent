@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { decideLiveWithAI, runAIAgent } from "../ai-agent.mjs";
+import { sanitizeEvents } from "../agent/policy.mjs";
 
 const config = JSON.parse(await readFile(new URL("../public/config/actions.json", import.meta.url), "utf8"));
 const sample = JSON.parse(await readFile(new URL("../public/data/sample-session.json", import.meta.url), "utf8"));
@@ -37,7 +38,7 @@ test("without a secret the pi-backed agent is explicit about rule fallback", asy
 });
 
 test("all perception, decision, action, dispatch, and memory capabilities are tools", async () => {
-  const runtime = completeRuntime({ summary: "AI 已制定策略", screen_topic: "校园独处空间", events: [
+  const runtime = completeRuntime({ summary: "AI 已制定策略", screen_topic: "校园独处空间", vote_candidates: ["安静空间", "校园路线", "共享地图"], events: [
     { time: 0, stage_recommendation: "diverge", evidence: [], missing_evidence: [], candidates: [{ strategy: "invent_strategy", benefit: 99, disruption: 0, goal_fit: 99, confidence: 99 }] },
     { time: 43, stage_recommendation: "diverge", evidence: ["最近窗口未出现明显新方向"], missing_evidence: [], candidates: [
       { strategy: "observe", title: "继续观察", rationale: "保留空间", benefit: 35, disruption: 0, goal_fit: 40, confidence: 75, follow_up: "等待", expected_effect: "保留空间" },
@@ -53,6 +54,7 @@ test("all perception, decision, action, dispatch, and memory capabilities are to
   assert.equal(result.events[1].expectedEffect, "提升发散性");
   assert.equal(result.events[1].confidence, 85);
   assert.equal(result.analysis.screenTopic, "校园独处空间");
+  assert.deepEqual(result.analysis.voteCandidates, ["安静空间", "校园路线", "共享地图"]);
   assert.ok(result.events[1].selectionMargin >= 8);
   assert.deepEqual(result.trace.filter((event) => event.type === "tool_execution_start").map((event) => event.tool), COMPLETE_TOOL_CHAIN);
   assert.equal(result.execution.recorded, true);
@@ -97,6 +99,26 @@ test("stage changes still require two consecutive convergence recommendations", 
   const result = await runAIAgent({ transcript: sample.transcript, participants: sample.participants, duration: sample.duration, config, ...runtime });
   assert.equal(result.events[1].stage, "diverge");
   assert.equal(result.events[2].stage, "converge");
+  assert.equal(result.events[2].strategy, "prepare_convergence");
+  assert.match(result.events[2].utterance, /开始收敛/);
+});
+
+test("icebreaker metrics cannot trigger an immediate discussion intervention or convergence vote", () => {
+  const observe = { strategy: "observe", benefit: 20, disruption: 0, goal_fit: 20, confidence: 80 };
+  const advance = { strategy: "advance_decision", title: "立即收口", benefit: 95, disruption: 5, goal_fit: 95, confidence: 95, utterance: "马上投票。" };
+  const observations = [55, 60, 110, 165, 220].map((time) => ({
+    time,
+    suggestedStage: "converge",
+    metrics: { participation: 50, diversity: 90, flow: 70 },
+    diagnostics: { discussion_start_seconds: 60, discussion_elapsed_seconds: Math.max(0, time - 60), quiet_seconds: Math.max(0, time - 60), quiet_share: 0, quiet_target: "C" },
+    evidence: [],
+    recentTranscript: []
+  }));
+  const raw = observations.map(({ time }) => ({ time, stage_recommendation: "converge", evidence: [], missing_evidence: [], candidates: [observe, advance] }));
+  const events = sanitizeEvents(raw, observations, [{ id: "A" }, { id: "B" }, { id: "C" }], config);
+  assert.ok(events.filter((event) => event.time < 130).every((event) => event.strategy === "observe" && event.stage === "diverge"));
+  assert.match(events.find((event) => event.time === 60).reason, /重新建立讨论基线/);
+  assert.equal(events.find((event) => event.time === 220).stage, "converge");
 });
 
 test("live decisions run the same complete tool chain", async () => {

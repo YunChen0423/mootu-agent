@@ -76,6 +76,7 @@ const server = createServer(async (req, res) => {
         transcript: payload.transcript,
         participants: payload.participants || [],
         duration,
+        discussionStart: Number(payload.discussionStart) || 0,
         config
       });
       return json(res, 200, result);

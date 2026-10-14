@@ -263,6 +263,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     demo.speaker = null;
     demo.attentionMode = null;
     demo.action = null;
+    if (demo.mode === "icebreaker" && demo.activePods.length) demo.round = Math.floor(Math.random() * demo.activePods.length);
     startBaseTransition(now, { x: 0, y: 0, yaw: 0, duration: 1.35, kind: "scenario" });
     if (!running) pausedAt = now;
   };

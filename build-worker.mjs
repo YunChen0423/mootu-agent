@@ -37,7 +37,7 @@ export default { async fetch(request, env) {
       const payload = await request.json();
       if (!Array.isArray(payload.transcript) || !payload.transcript.length) return reply({ error: "transcript 必须是非空数组" }, 400);
       const duration = Number(payload.duration) || Math.max(...payload.transcript.map((line) => Number(line.end) || 0));
-      return reply(await runAIAgent({ transcript: payload.transcript, participants: payload.participants || [], duration, config: CONFIG, ...modelOptions(env) }));
+      return reply(await runAIAgent({ transcript: payload.transcript, participants: payload.participants || [], duration, discussionStart: Number(payload.discussionStart) || 0, config: CONFIG, ...modelOptions(env) }));
     }
     if (request.method === "POST" && url.pathname === "/api/agent/decide") return reply(await decideLiveWithAI({ ...(await request.json()), config: CONFIG, ...modelOptions(env) }));
     if (request.method === "POST" && url.pathname === "/api/generate-message") return reply(await generateMessage(await request.json(), env));
