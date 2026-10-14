@@ -69,72 +69,78 @@
           <div id="participants" class="participants"></div>
         </article>
 
-        <article class="panel reasoning-panel">
-          <div class="panel-head"><div><span class="step">02</span><h2>Agent 判断</h2></div><div class="decision-ownership"><small id="activeAgentLabel">讨论促进 Agent</small><span id="decisionStatus" class="decision-tag calm">持续观察</span></div></div>
-          <div id="agentOrchestration" class="agent-map" aria-label="多 Agent 阶段路由图">
-            <div id="orchestrationPosition" class="agent-position">当前位置：等待会话</div>
-            <div class="agent-router node-card" data-owner="router"><small>全局 Harness</small><strong>阶段路由 Agent</strong><span>观察事件并校验切换</span></div>
-            <div class="route-stem" aria-hidden="true"></div>
-            <div class="agent-modules">
-              <div class="node-card" data-owner="icebreaker"><small>可选开场</small><strong>破冰 Workflow</strong><span>静默触发 · 失败可重试</span></div>
-              <div class="parallel-module" data-module="discussion">
-                <em>并行协作</em>
-                <div class="node-card" data-owner="discussion"><small>讨论主进程</small><strong>讨论促进 Agent</strong><span>发散 ↔ 收敛</span></div>
-                <b>⇄</b>
-                <div class="node-card" data-owner="synthesis"><small>持续同步</small><strong>方案综合 Agent</strong><span>实时归类候选</span></div>
+        <section class="right-workspace">
+          <div class="analysis-row">
+            <article class="panel reasoning-panel">
+              <div class="panel-head"><div><span class="step">02</span><h2>Agent 判断</h2></div><div class="decision-ownership"><small id="activeAgentLabel">讨论促进 Agent</small><span id="decisionStatus" class="decision-tag calm">持续观察</span></div></div>
+              <div id="agentOrchestration" class="agent-map" aria-label="多 Agent 阶段路由图">
+                <div id="orchestrationPosition" class="agent-position">当前位置：等待会话</div>
+                <div class="agent-router node-card" data-owner="router"><small>全局 Harness</small><strong>阶段路由 Agent</strong><span>观察事件并校验切换</span></div>
+                <div class="route-stem" aria-hidden="true"></div>
+                <div class="agent-modules">
+                  <div class="node-card" data-owner="icebreaker"><small>可选开场</small><strong>破冰 Workflow</strong><span>静默触发 · 失败可重试</span></div>
+                  <div class="parallel-module" data-module="discussion">
+                    <em>并行协作</em>
+                    <div class="node-card" data-owner="discussion"><small>讨论主进程</small><strong>讨论促进 Agent</strong><span>发散 ↔ 收敛</span></div>
+                    <b>⇄</b>
+                    <div class="node-card" data-owner="synthesis"><small>持续同步</small><strong>方案综合 Agent</strong><span>实时归类关键词</span></div>
+                  </div>
+                  <div class="node-card" data-owner="voting"><small>结果确认</small><strong>投票 Workflow</strong><span>收票 · 平票可回退</span></div>
+                </div>
+                <div class="route-feedback" aria-label="允许的阶段回路">
+                  <span>静默不足：跳过破冰 → 讨论</span><span>破冰失败：↺ 破冰</span><span>出现新方向：↺ 发散</span><span>平票／低共识：↩ 方案综合</span>
+                </div>
               </div>
-              <div class="node-card" data-owner="voting"><small>结果确认</small><strong>投票 Workflow</strong><span>收票 · 平票可回退</span></div>
-            </div>
-            <div class="route-feedback" aria-label="允许的阶段回路">
-              <span>静默不足：跳过破冰 → 讨论</span><span>破冰失败：↺ 破冰</span><span>出现新方向：↺ 发散</span><span>平票／低共识：↩ 方案综合</span>
-            </div>
-          </div>
-          <div class="decision-card">
-            <div><span class="section-label">本轮决策</span><h3 id="decisionTitle">保持观察</h3></div>
-            <p id="decisionReason">当前没有足够证据支持介入。</p>
-            <div class="follow-up"><span>下一步</span><b id="followUp">继续观察讨论变化</b></div>
-          </div>
-          <div id="decisionCycle" class="cycle" aria-label="Agent 决策循环">
-            <span class="active">观察</span><i>→</i><span>判断</span><i>→</i><span>介入</span><i>→</i><span>反馈</span>
-          </div>
-          <div class="state-block" hidden>
-            <div class="section-label">群体状态</div>
-            <div class="metrics">
-              <div id="participationState" class="metric-row"><span>参与开放性</span><div id="participationStates" class="state-scale"><i>不开放</i><i>偏不开放</i><i>偏开放</i><i>开放</i></div></div>
-              <div id="diversityState" class="metric-row"><span>创意发散性</span><div id="diversityStates" class="state-scale"><i>收束</i><i>偏收束</i><i>偏发散</i><i>发散</i></div></div>
-              <div id="flowState" class="metric-row"><span>讨论流动性</span><div id="flowStates" class="state-scale"><i>停滞</i><i>偏停滞</i><i>偏流动</i><i>流动</i></div></div>
-            </div>
-          </div>
-          <div class="evidence-block">
-            <div class="section-label">可验证依据</div>
-            <ul id="evidenceList"><li>加载示例后，决策依据会随时间更新。</li></ul>
-          </div>
-        </article>
+              <div class="decision-card">
+                <div><span class="section-label">本轮决策</span><h3 id="decisionTitle">保持观察</h3></div>
+                <p id="decisionReason">当前没有足够证据支持介入。</p>
+                <div class="follow-up"><span>下一步</span><b id="followUp">继续观察讨论变化</b></div>
+              </div>
+            </article>
 
-        <article class="panel output-panel">
-          <div class="panel-head"><div><span class="step">03</span><h2>具身输出</h2></div><button id="jsonBtn" class="text-button">查看 JSON</button></div>
-          <h3 id="simulationTitle" class="simulation-title">MooTu 实时互动演示</h3>
-          <div id="mujocoScreen" class="mujoco-screen">
-            <canvas id="mujocoViewport" aria-label="MuJoCo 实时仿真画面"></canvas>
-            <div class="mujoco-placeholder"><span>MJ</span><strong>MooTu 互动演示</strong><small>正在载入破冰与投票场景</small></div>
-            <div class="mujoco-screen-bar"><span><i></i> INTERACTION DEMO</span><b id="mujocoStrategy">破冰启动</b></div>
-            <div id="agentSpeech" class="agent-speech" aria-live="polite"><small>MooTu 说</small><strong id="agentSpeechText"></strong></div>
+            <article class="panel simulation-panel">
+              <div class="panel-head"><div><span class="step">03</span><h2>具身输出</h2></div></div>
+              <h3 id="simulationTitle" class="simulation-title">MooTu 实时互动演示</h3>
+              <div id="mujocoScreen" class="mujoco-screen">
+                <canvas id="mujocoViewport" aria-label="MuJoCo 实时仿真画面"></canvas>
+                <div class="mujoco-placeholder"><span>MJ</span><strong>MooTu 互动演示</strong><small>正在载入破冰与投票场景</small></div>
+                <div class="mujoco-screen-bar"><span><i></i> INTERACTION DEMO</span><b id="mujocoStrategy">破冰启动</b></div>
+              </div>
+              <div class="robot-visual">
+                <div id="memberRing" class="member-ring" aria-label="讨论成员位置"></div>
+                <div id="focusArrow" class="focus-arrow"><i></i><span id="focusLabel">朝向 C</span></div>
+                <div id="robot" class="robot listening"><div class="antenna"></div><div class="head"><div class="face"><i></i><i></i></div></div><div class="neck"></div><div class="body"><span></span></div></div>
+                <div class="motion-ring ring-one"></div><div class="motion-ring ring-two"></div><p id="robotMood">倾听 · 保持中立</p>
+              </div>
+            </article>
+
+            <article class="panel output-panel">
+              <div class="panel-head"><div><h2>文字与动作输出</h2></div><button id="jsonBtn" class="text-button">查看 JSON</button></div>
+              <div id="agentSpeech" class="spoken-output" aria-live="polite"><small>机器人语音 · 实际说出</small><strong id="agentSpeechText">保持安静</strong></div>
+              <div id="coreActions" class="action-grid"></div>
+              <div class="pod-section">
+                <div class="section-label">Pod 个体反馈</div>
+                <div class="pod-row"><div id="podOrb" class="pod-orb"><i></i></div><div><strong id="podTarget">群体陪伴</strong><p id="podActions">恒温 · 无振动 · 无呼吸变化</p></div></div>
+              </div>
+            </article>
           </div>
-          <div class="robot-visual">
-            <div id="memberRing" class="member-ring" aria-label="讨论成员位置"></div>
-            <div id="focusArrow" class="focus-arrow"><i></i><span id="focusLabel">朝向 C</span></div>
-            <div id="robot" class="robot listening">
-              <div class="antenna"></div><div class="head"><div class="face"><i></i><i></i></div></div><div class="neck"></div><div class="body"><span></span></div>
+
+          <article class="panel workflow-panel">
+            <div class="workflow-heading"><span id="workflowTitle" class="section-label">阶段依据</span><strong id="workflowHint">等待阶段路由</strong></div>
+            <div id="decisionCycle" class="cycle" aria-label="讨论促进 Agent 决策循环" hidden>
+              <span class="active">观察</span><i>→</i><span>判断</span><i>→</i><span>介入</span><i>→</i><span>反馈</span>
             </div>
-            <div class="motion-ring ring-one"></div><div class="motion-ring ring-two"></div>
-            <p id="robotMood">倾听 · 保持中立</p>
-          </div>
-          <div id="coreActions" class="action-grid"></div>
-          <div class="pod-section">
-            <div class="section-label">Pod 个体反馈</div>
-            <div class="pod-row"><div id="podOrb" class="pod-orb"><i></i></div><div><strong id="podTarget">群体陪伴</strong><p id="podActions">恒温 · 无振动 · 无呼吸变化</p></div></div>
-          </div>
-        </article>
+            <div class="state-block" hidden>
+              <div class="section-label">群体状态</div>
+              <div class="metrics">
+                <div id="participationState" class="metric-row"><span>参与开放性</span><div id="participationStates" class="state-scale"><i>不开放</i><i>偏不开放</i><i>偏开放</i><i>开放</i></div></div>
+                <div id="diversityState" class="metric-row"><span>创意发散性</span><div id="diversityStates" class="state-scale"><i>收束</i><i>偏收束</i><i>偏发散</i><i>发散</i></div></div>
+                <div id="flowState" class="metric-row"><span>讨论流动性</span><div id="flowStates" class="state-scale"><i>停滞</i><i>偏停滞</i><i>偏流动</i><i>流动</i></div></div>
+              </div>
+            </div>
+            <div class="evidence-block"><div class="section-label">可验证依据</div><ul id="evidenceList"><li>加载示例后，决策依据会随时间更新。</li></ul></div>
+          </article>
+        </section>
       </section>
 
     </main>

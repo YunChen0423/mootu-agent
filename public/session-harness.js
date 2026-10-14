@@ -51,6 +51,22 @@ function findStart(events, predicate) {
   return events.find(predicate)?.start ?? null;
 }
 
+function keywordLabel(text) {
+  const clean = String(text || "")
+    .replace(/^(?:嗯|对|我觉得|我想到的是|我们可以|我们是不是|也许|或者|还有|那就|是不是|可以可以)[，,、\s]*/g, "")
+    .replace(/(?:比较容易落地|不一定要|一直在围绕|完全不一样的|有没有|最好|可能|应该|其实)/g, "")
+    .replace(/的形式|的方式|的方向|这个方案/g, "")
+    .trim();
+  const domainTerms = [...clean.matchAll(/[\u4e00-\u9fff]{0,6}(?:电话亭|小房间|空间|路线|地图|声音|音乐|任务|集章|游戏|装置|原型|互动|交互|拼合|组合)/g)]
+    .map((match) => match[0].replace(/^(?:一个|一种|一条|可以是|像|做成|真正不同的)/, "").split("的").at(-1))
+    .map((term) => term.replace(/^(?:单纯|收集|生成|合成|使用|通过)/, ""))
+    .filter((term) => term.length >= 2 && term.length <= 10);
+  if (domainTerms.length) return [...new Set(domainTerms)].slice(-2).join("＋").slice(0, 12);
+  const clauses = clean.split(/[，,。！？；;：:]/).map((clause) => clause.trim()).filter((clause) => clause.length >= 2);
+  const fallback = clauses.at(-1) || clean || "待归类";
+  return fallback.replace(/^(?:可以是|可以做|先做|做一个|变成|就是)/, "").slice(0, 10);
+}
+
 function extractCandidates(events, time) {
   const visible = events.filter((event) => event.start <= time);
   const numberedCandidates = (text) => [...text.matchAll(/[一二三1-3][、，,:：]\s*([^；;。]+)/g)];
@@ -60,7 +76,7 @@ function extractCandidates(events, time) {
     return Object.freeze({
       version: working.length ? visible.filter((event) => event.type === EVENT_TYPES.PARTICIPANT_UTTERANCE).length : 0,
       status: working.length ? "evolving" : "empty",
-      items: Object.freeze(working.map((event, index) => Object.freeze({ id: `working-${index + 1}`, label: event.text.slice(0, 36), sourceEventId: event.id })))
+      items: Object.freeze(working.map((event, index) => Object.freeze({ id: `working-${index + 1}`, label: keywordLabel(event.text), sourceEventId: event.id })))
     });
   }
   const matches = numberedCandidates(source.text);
@@ -68,7 +84,7 @@ function extractCandidates(events, time) {
     version: 1,
     status: "ready",
     sourceEventId: source.id,
-    items: Object.freeze(matches.map((match, index) => Object.freeze({ id: `option-${index + 1}`, label: match[1].trim() })))
+    items: Object.freeze(matches.map((match, index) => Object.freeze({ id: `option-${index + 1}`, label: keywordLabel(match[1]) })))
   });
 }
 

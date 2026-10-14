@@ -165,6 +165,7 @@ function candidateInformation(blackboard = state.sessionHarness?.blackboard) {
 
 function renderProtocolDecision(blackboard, fallbackEvent, eventIndex) {
   $(".state-block").hidden = true;
+  $("#decisionCycle").hidden = true;
   const copy = {
     [SESSION_PHASES.WAITING]: { owner: "阶段路由 Agent", status: "等待开始", title: "等待有效会话事件", reason: "当前只有会话基线，尚未检测到破冰或参与者发言。", next: "保持空状态，等待第一条有效事件", evidence: "尚无可用于阶段判断的事件" },
     [SESSION_PHASES.ICEBREAKER]: { owner: "破冰 Workflow", status: "流程执行中", title: "运行击鼓传花", reason: "阶段路由 Agent 已调用确定性的破冰流程，MooTu 正在通过 Pod 灯光接力选择首位发言者。", next: "等待被选参与者完成第一轮有效发言", evidence: "检测到击鼓传花或 Pod 接力事件" },
@@ -173,6 +174,8 @@ function renderProtocolDecision(blackboard, fallbackEvent, eventIndex) {
     [SESSION_PHASES.RESULT_CONFIRMATION]: { owner: "投票 Workflow", status: "确认结果", title: "确认投票结果", reason: "投票收集已经结束，系统正在公布结果并检查是否需要平票回退。", next: "确认共识后关闭会话；平票则返回候选整理", evidence: "检测到投票结束或结果公布事件" },
     [SESSION_PHASES.CLOSED]: { owner: "阶段路由 Agent", status: "会话完成", title: "会话已结束", reason: "开场、讨论与投票记录均已写入事件日志，当前快照进入只读完成态。", next: "保留日志与最终快照供复盘", evidence: "检测到明确的结束事件" }
   }[blackboard.phase];
+  $("#workflowTitle").textContent = "阶段依据";
+  $("#workflowHint").textContent = `${copy.owner} · 不运行讨论决策循环`;
   $("#activeAgentLabel").textContent = copy.owner;
   $("#decisionStatus").textContent = copy.status;
   $("#decisionStatus").className = `decision-tag ${blackboard.phase === SESSION_PHASES.CLOSED ? "calm" : "active"}`;
@@ -255,6 +258,9 @@ function enterLiveSession() {
   $("#transcriptHint").textContent = "实时识别 · 超出后自动上滚";
   renderLiveTranscriptFeed();
   $(".state-block").hidden = false;
+  $("#decisionCycle").hidden = false;
+  $("#workflowTitle").textContent = "讨论促进 Agent Workflow";
+  $("#workflowHint").textContent = "现场讨论 · 实时运行";
   $("#decisionTitle").textContent = "建立现场基线";
   $("#decisionReason").textContent = "旧回放数据已清空，等待实时音频、画面与语音内容。";
   $("#followUp").textContent = "持续倾听并等待足够证据";
@@ -474,6 +480,9 @@ function renderToolTrace(trace = state.agentTrace) {
 
 function renderDecision(event, eventIndex, time) {
   $(".state-block").hidden = false;
+  $("#decisionCycle").hidden = false;
+  $("#workflowTitle").textContent = "讨论促进 Agent Workflow";
+  $("#workflowHint").textContent = "观察 → 判断 → 介入 → 反馈";
   $("#activeAgentLabel").textContent = "讨论促进 + 方案综合";
   const action = state.config.core.strategies[event.strategy];
   const intervening = event.strategy !== "observe";
@@ -717,7 +726,7 @@ async function stopLiveMode() {
 }
 
 function channelLabel(key) {
-  return ({ move: "移动", orient: "朝向", posture: "姿态", voice: "语音", expression: "表情", display: "信息 · 方案综合" })[key] || key;
+  return ({ move: "移动", orient: "朝向", posture: "姿态", voice: "发声方式", expression: "表情", display: "屏幕信息 · 显示文字" })[key] || key;
 }
 
 function renderConfig() {

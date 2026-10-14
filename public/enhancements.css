@@ -1218,3 +1218,53 @@ body[data-stage="converge"] .pod-section { border-color: #f0bd35; background: li
 .node-card.parallel-active::before { content: "同步运行"; position: absolute; top: -15px; right: 5px; color: #92700c; font-size: 8px; font-weight: 900; }
 .node-card.monitoring { border-color: #b9b4a8; background: #f0eee8; }
 .node-card.monitoring::after { content: "监控中"; position: absolute; top: 5px; right: 7px; color: #77736a; font-size: 8px; font-weight: 900; }
+
+/* Dashboard composition: discussion feed at left, three outputs above, workflow below. */
+.right-workspace { min-width: 0; min-height: 0; display: grid; gap: 10px; }
+.analysis-row { min-width: 0; min-height: 0; display: grid; gap: 10px; }
+.simulation-panel .robot-visual { display: none; }
+.spoken-output { padding: 12px; border: 1px solid #e3dfd4; border-radius: 13px; background: #f5f4ef; }
+.spoken-output small { display: block; color: #8a8780; font-size: 9px; font-weight: 900; letter-spacing: .08em; }
+.spoken-output strong { display: block; margin-top: 7px; color: #292a2d; font-size: 12px; line-height: 1.55; }
+.spoken-output:not(.show) strong { color: #9b9993; }
+.output-panel .action-grid { grid-template-columns: 1fr; margin-top: 9px; overflow: auto; }
+.output-panel .action[data-channel="display"] { border-color: #e5bd3c; background: #fff7d8; }
+.output-panel .action[data-channel="display"] strong { font-size: 13px; line-height: 1.45; }
+.workflow-panel { min-height: 0; }
+.workflow-heading { display: flex; align-items: center; justify-content: space-between; }
+.workflow-heading strong { color: #8b877d; font-size: 10px; }
+.workflow-panel .evidence-block { min-width: 0; }
+[hidden] { display: none !important; }
+
+@media (min-width: 1051px) {
+  main { max-width: 1900px; }
+  .workspace-grid { grid-template-columns: minmax(310px, .72fr) minmax(0, 2.48fr); height: calc(100vh - 76px); }
+  .right-workspace { grid-template-rows: minmax(0, 1.62fr) minmax(190px, .72fr); }
+  .analysis-row { grid-template-columns: minmax(290px, .95fr) minmax(420px, 1.18fr) minmax(270px, .77fr); }
+  .analysis-row > .panel { height: 100%; min-height: 0; }
+  .reasoning-panel .agent-map { flex: 1 1 auto; min-height: 205px; }
+  .reasoning-panel .decision-card { margin-top: 9px; }
+  .simulation-panel .mujoco-screen { flex: 1 1 auto; height: auto; min-height: 340px; margin-bottom: 0; }
+  .output-panel .pod-section { margin-top: auto; }
+  .workflow-panel { display: grid; grid-template-columns: minmax(320px, .78fr) minmax(520px, 1.22fr); grid-template-rows: auto auto 1fr; gap: 8px 20px; height: 100%; padding: 12px 14px; }
+  .workflow-heading { grid-column: 1 / -1; }
+  .workflow-panel .cycle { grid-column: 1; grid-row: 2; margin: 0; }
+  .workflow-panel .evidence-block { grid-column: 1; grid-row: 3; padding-top: 8px; }
+  .workflow-panel .state-block { grid-column: 2; grid-row: 2 / 4; }
+  .workflow-panel .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 7px 0 0; }
+  .workflow-panel .metric-row { display: block; }
+  .workflow-panel .state-scale { margin-top: 6px; }
+  .workflow-panel .evidence-block ul { max-height: 72px; overflow: auto; }
+}
+
+@media (max-width: 1050px) {
+  .right-workspace { grid-column: 1 / -1; }
+  .analysis-row { grid-template-columns: 1fr 1fr; }
+  .analysis-row .output-panel { grid-column: 1 / -1; }
+  .workflow-panel { min-height: 360px; }
+}
+
+@media (max-width: 720px) {
+  .analysis-row { grid-template-columns: 1fr; }
+  .analysis-row .output-panel { grid-column: auto; }
+}

@@ -83,10 +83,30 @@ test("speaking shares use one compact segmented bar", () => {
 test("embodied display copy is generated from recent discussion context", () => {
   assert.match(app, /generateContextualUtterance/);
   assert.match(app, /\/api\/generate-message/);
-  assert.match(app, /信息 · 方案综合/);
+  assert.match(app, /屏幕信息 · 显示文字/);
   assert.match(app, /candidateInformation/);
   assert.match(html, /id="agentSpeech"/);
   assert.match(app, /#agentSpeech/);
+});
+
+test("spoken words and screen information are separate output surfaces", () => {
+  assert.match(html, /机器人语音 · 实际说出/);
+  assert.match(app, /display: embodiment\.information/);
+  assert.match(enhancements, /action\[data-channel="display"\]/);
+});
+
+test("discussion workflow is hidden for non-discussion agents", () => {
+  assert.match(html, /id="decisionCycle"[^>]*hidden/);
+  assert.match(app, /renderProtocolDecision[\s\S]*#decisionCycle"\)\.hidden = true/);
+  assert.match(app, /renderDecision[\s\S]*#decisionCycle"\)\.hidden = false/);
+});
+
+test("desktop layout separates reasoning, MuJoCo, structured output, and workflow", () => {
+  assert.match(html, /class="right-workspace"/);
+  assert.match(html, /class="analysis-row"/);
+  assert.match(html, /class="panel simulation-panel"/);
+  assert.match(html, /class="panel workflow-panel"/);
+  assert.match(enhancements, /grid-template-columns: minmax\(290px, \.95fr\) minmax\(420px, 1\.18fr\) minmax\(270px, \.77fr\)/);
 });
 
 test("desktop transcript fills available input space and judgment highlights share one color", () => {
