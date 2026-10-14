@@ -53,3 +53,21 @@ test("global harness guards voting until a candidate snapshot exists", () => {
   const result = validateTransition({ from: SESSION_PHASES.BALLOT_PREPARATION, to: SESSION_PHASES.VOTING, blackboard: { candidates: { items: [] } } });
   assert.equal(result.allowed, false);
 });
+
+test("a long silent opening triggers the icebreaker before the first participant speaks", () => {
+  const harness = createSessionHarness({ transcript: annotateTranscript([
+    { start: 0, end: 20, speaker: "[现场]", text: "所有成员保持沉默。" },
+    { start: 25, end: 30, speaker: "A", text: "我先说一个想法。" }
+  ]) });
+  assert.equal(harness.setTime(17).phase, SESSION_PHASES.WAITING);
+  assert.equal(harness.setTime(18).phase, SESSION_PHASES.ICEBREAKER);
+});
+
+test("candidate synthesis evolves in parallel with discussion without reading future events", () => {
+  const harness = createSessionHarness({ transcript });
+  const early = harness.setTime(80, "diverge");
+  assert.deepEqual(early.coactiveAgents, ["discussion_facilitator", "candidate_synthesis"]);
+  assert.equal(early.candidates.status, "evolving");
+  assert.ok(early.candidates.items.length > 0);
+  assert.equal(early.candidates.items.some((item) => item.label.includes("真实声音")), false);
+});

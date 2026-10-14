@@ -22,6 +22,7 @@ const SYSTEM_SPEAKERS = new Map([
   ["[设备]", EVENT_TYPES.DEVICE_EVENT],
   ["设备", EVENT_TYPES.DEVICE_EVENT]
 ]);
+const ICEBREAKER_SILENCE_TRIGGER_SECONDS = 18;
 
 const normalizeSpeakerKey = (speaker) => String(speaker || "").trim().toLowerCase();
 
@@ -50,10 +51,19 @@ function findStart(events, predicate) {
   return events.find(predicate)?.start ?? null;
 }
 
-function extractCandidates(events) {
-  const source = events.find((event) => event.type === EVENT_TYPES.ROBOT_UTTERANCE && /三个|候选|选择|方案/.test(event.text) && /一[、，,:：]|二[、，,:：]|三[、，,:：]/.test(event.text));
-  if (!source) return Object.freeze({ version: 0, status: "empty", items: [] });
-  const matches = [...source.text.matchAll(/[一二三1-3][、，,:：]\s*([^；;。]+)/g)];
+function extractCandidates(events, time) {
+  const visible = events.filter((event) => event.start <= time);
+  const numberedCandidates = (text) => [...text.matchAll(/[一二三1-3][、，,:：]\s*([^；;。]+)/g)];
+  const source = [...visible].reverse().find((event) => event.type === EVENT_TYPES.ROBOT_UTTERANCE && numberedCandidates(event.text).length >= 2);
+  if (!source) {
+    const working = visible.filter((event) => event.type === EVENT_TYPES.PARTICIPANT_UTTERANCE && event.text.length >= 8).slice(-3);
+    return Object.freeze({
+      version: working.length ? visible.filter((event) => event.type === EVENT_TYPES.PARTICIPANT_UTTERANCE).length : 0,
+      status: working.length ? "evolving" : "empty",
+      items: Object.freeze(working.map((event, index) => Object.freeze({ id: `working-${index + 1}`, label: event.text.slice(0, 36), sourceEventId: event.id })))
+    });
+  }
+  const matches = numberedCandidates(source.text);
   return Object.freeze({
     version: 1,
     status: "ready",
@@ -63,8 +73,10 @@ function extractCandidates(events) {
 }
 
 function buildBoundaries(events) {
-  const icebreaker = findStart(events, (event) => includesAny(event.text, [/击鼓传花/, /接力/, /破冰/]));
-  const firstParticipant = findStart(events, (event) => event.type === EVENT_TYPES.PARTICIPANT_UTTERANCE && (icebreaker == null || event.start >= icebreaker));
+  const firstParticipant = findStart(events, (event) => event.type === EVENT_TYPES.PARTICIPANT_UTTERANCE);
+  const explicitIcebreaker = findStart(events, (event) => includesAny(event.text, [/击鼓传花/, /接力/, /破冰/]));
+  const silenceIcebreaker = firstParticipant != null && firstParticipant >= ICEBREAKER_SILENCE_TRIGGER_SECONDS ? ICEBREAKER_SILENCE_TRIGGER_SECONDS : null;
+  const icebreaker = explicitIcebreaker == null ? silenceIcebreaker : silenceIcebreaker == null ? explicitIcebreaker : Math.min(explicitIcebreaker, silenceIcebreaker);
   const ballotPreparation = findStart(events, (event) => includesAny(event.text, [/讨论即将结束/, /整理.{0,6}(?:候选|方案)/, /三个(?:候选|选择|方案)/]));
   const voting = findStart(events, (event) => includesAny(event.text, [/请.{0,8}(?:pod|Pod).{0,6}投票/, /显示.{0,8}(?:选项|方案)/, /开始投票/, /按下.{0,8}(?:pod|Pod)/]));
   const resultConfirmation = findStart(events, (event) => includesAny(event.text, [/投票结束/, /公布.{0,6}结果/, /一致选择/, /最终选择/])) ;
@@ -102,7 +114,6 @@ export class SessionHarness {
     const supplied = new Map(participants.map((participant) => [participant.id, participant]));
     this.participants = Object.freeze(detected.map((id) => Object.freeze(supplied.get(id) || { id, name: id })));
     this.boundaries = buildBoundaries(this.eventLog);
-    this.candidates = extractCandidates(this.eventLog);
     this.transitionHistory = [];
     this.blackboard = Object.freeze({});
     this.setTime(0, "diverge");
@@ -115,15 +126,17 @@ export class SessionHarness {
     if (previousPhase && previousPhase !== phase) this.transitionHistory.push(Object.freeze({ from: previousPhase, to: phase, at: safeTime }));
     const currentEvent = [...this.eventLog].reverse().find((event) => event.start <= safeTime) || null;
     const owner = ownerForPhase(phase);
+    const candidates = extractCandidates(this.eventLog, safeTime);
     this.blackboard = Object.freeze({
       sessionTime: safeTime,
       phase,
       discussionStage: phase === SESSION_PHASES.DISCUSSION ? discussionStage : null,
       ...owner,
+      coactiveAgents: Object.freeze(phase === SESSION_PHASES.DISCUSSION ? ["discussion_facilitator", "candidate_synthesis"] : [owner.activeAgent]),
       participants: this.participants,
       podMap: Object.freeze(this.participants.map((participant, index) => Object.freeze({ participantId: participant.id, podId: `pod-${index + 1}` }))),
       currentEvent,
-      candidates: this.candidates,
+      candidates,
       voteLedger: parseVoteLedger(this.eventLog, safeTime),
       transitionHistory: Object.freeze([...this.transitionHistory])
     });

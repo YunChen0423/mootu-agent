@@ -15,10 +15,14 @@ test("live mode exposes an explicit user-triggered camera control", () => {
   assert.match(liveSensing, /echoCancellation/);
 });
 
-test("primary discussion stage and distinct state labels are present", () => {
-  assert.match(html, /id="stageFocus"/);
-  assert.match(html, /破冰启动/);
-  assert.match(html, /投票确认/);
+test("nonlinear agent map replaces the redundant top stage strip", () => {
+  assert.doesNotMatch(html, /id="stageFocus"/);
+  assert.match(html, /id="agentOrchestration"/);
+  assert.match(html, /当前位置：等待会话/);
+  assert.match(html, /并行协作/);
+  assert.match(html, /出现新方向：↺ 发散/);
+  assert.match(html, /破冰 Workflow/);
+  assert.match(html, /投票 Workflow/);
   assert.match(app, /偏不开放/);
   assert.match(app, /偏发散/);
   assert.match(app, /偏流动/);
@@ -44,9 +48,10 @@ test("live mode starts a clean session and renders recognition into the transcri
   assert.match(enhancements, /\.live-mode \.playback-row/);
 });
 
-test("discussion stage controls the full-page theme", () => {
+test("discussion stages keep one neutral full-page theme", () => {
   assert.match(app, /document\.body\.dataset\.stage/);
-  assert.match(enhancements, /body\[data-stage="converge"\]/);
+  assert.match(enhancements, /body\[data-stage="diverge"\],\s*body\[data-stage="converge"\]/);
+  assert.match(enhancements, /background: var\(--paper\) !important/);
 });
 
 test("decision timeline is removed and group state keeps visible alternatives in two columns", () => {
@@ -65,8 +70,8 @@ test("background audio alone is not treated as confirmed speech", () => {
   assert.match(app, /检测到背景音/);
 });
 
-test("stage switch is in the top navigation and live interim text has no entrance animation", () => {
-  assert.ok(html.indexOf("stageFocus") < html.indexOf("header-actions"));
+test("the removed top stage switch stays absent and live interim text has no entrance animation", () => {
+  assert.doesNotMatch(html, /stageFocus/);
   assert.match(enhancements, /\.live-mode \.transcript-line[\s\S]*animation: none/);
 });
 
@@ -78,7 +83,8 @@ test("speaking shares use one compact segmented bar", () => {
 test("embodied display copy is generated from recent discussion context", () => {
   assert.match(app, /generateContextualUtterance/);
   assert.match(app, /\/api\/generate-message/);
-  assert.match(app, /信息 · 实时生成/);
+  assert.match(app, /信息 · 方案综合/);
+  assert.match(app, /candidateInformation/);
   assert.match(html, /id="agentSpeech"/);
   assert.match(app, /#agentSpeech/);
 });
@@ -100,10 +106,9 @@ test("judgment uses four-point scales, stage warnings, and no transition popup",
   assert.match(enhancements, /\.cycle\.observing-only/);
 });
 
-test("disabled analysis button keeps readable contrast", () => {
-  assert.match(styles, /\.button\.primary:disabled/);
-  assert.match(styles, /-webkit-text-fill-color:#65645f/);
-  assert.match(styles, /opacity:1/);
+test("manual reanalysis control is removed", () => {
+  assert.doesNotMatch(html, /id="analyzeBtn"/);
+  assert.doesNotMatch(html, />重新分析<\/button>/);
 });
 
 test("embodied scene supports six dynamic members and target-specific orientation", () => {
@@ -117,8 +122,8 @@ test("embodied scene supports six dynamic members and target-specific orientatio
   assert.match(enhancements, /rotate\(var\(--focus-angle/);
 });
 
-test("AI analysis starts automatically and the button is only a retry", () => {
-  assert.match(html, />重新分析<\/button>/);
+test("AI analysis starts automatically without a retry button", () => {
+  assert.doesNotMatch(html, />重新分析<\/button>/);
   assert.match(app, /runFullAgentAnalysis\(\{ automatic: true \}\)/);
   assert.match(app, /loadImportedTranscript[\s\S]*runFullAgentAnalysis\(\{ automatic: true \}\)/);
   assert.doesNotMatch(html, />运行 AI Agent<\/button>/);
@@ -126,9 +131,9 @@ test("AI analysis starts automatically and the button is only a retry", () => {
 
 test("embodied output reproduces the interaction demo in browser MuJoCo", () => {
   assert.match(html, /id="mujocoViewport"/);
-  assert.match(html, /run_interaction_demo\.sh · 浏览器复刻/);
-  assert.match(html, /破冰接力/);
-  assert.match(html, /投票收敛/);
+  assert.match(html, /id="simulationTitle"[^>]*>MooTu 实时互动演示/);
+  assert.doesNotMatch(html, /class="mujoco-link"/);
+  assert.doesNotMatch(html, /id="icebreakerDemoBtn"|id="votingDemoBtn"|id="resetMujocoBtn"/);
   assert.match(app, /createBrowserMujoco/);
   assert.match(browserMujoco, /visuals-exact-v4\.bin\.gz/);
   assert.match(browserMujoco, /asset\.localQuaternion/);
@@ -171,8 +176,15 @@ test("all orchestrators remain visible and the active owner is highlighted", () 
   assert.match(html, /阶段路由 Agent/);
   assert.match(html, /方案综合 Agent/);
   assert.match(app, /setActiveOrchestration/);
-  assert.match(styles, /\.agent-node\.active/);
-  assert.match(styles, /\.agent-node\.monitoring/);
+  assert.match(enhancements, /\.node-card\.active/);
+  assert.match(enhancements, /\.node-card\.monitoring/);
+  assert.match(app, /scrollLeft/);
+});
+
+test("group-state dimensions only appear during the discussion facilitator phase", () => {
+  assert.match(html, /class="state-block" hidden/);
+  assert.match(app, /function renderProtocolDecision[\s\S]*\$\("\.state-block"\)\.hidden = true/);
+  assert.match(app, /function renderDecision[\s\S]*\$\("\.state-block"\)\.hidden = false/);
 });
 
 test("uploaded speakers define the visible pod count and time zero has no metric state", () => {

@@ -233,8 +233,8 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
   };
   const setScenario = (mode) => {
     const now = performance.now();
-    demo.mode = mode === "voting" ? "voting" : "icebreaker";
-    demo.phase = demo.mode === "icebreaker" ? "intro" : "open";
+    demo.mode = mode === "voting" ? "voting" : mode === "discussion" ? "discussion" : "icebreaker";
+    demo.phase = demo.mode === "icebreaker" ? "intro" : demo.mode === "voting" ? "open" : "listening";
     demo.phaseStarted = now;
     demo.selectedPod = null;
     demo.selectedPodNumber = null;
