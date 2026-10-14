@@ -101,12 +101,16 @@ test("discussion workflow is hidden for non-discussion agents", () => {
   assert.match(app, /renderDecision[\s\S]*#decisionCycle"\)\.hidden = false/);
 });
 
-test("desktop layout separates reasoning, MuJoCo, structured output, and workflow", () => {
+test("desktop layout gives MuJoCo the wide upper area and moves judgment below it", () => {
   assert.match(html, /class="right-workspace"/);
   assert.match(html, /class="analysis-row"/);
   assert.match(html, /class="panel simulation-panel"/);
-  assert.match(html, /class="panel workflow-panel"/);
-  assert.match(enhancements, /grid-template-columns: minmax\(290px, \.95fr\) minmax\(420px, 1\.18fr\) minmax\(270px, \.77fr\)/);
+  assert.doesNotMatch(html, /class="panel workflow-panel"/);
+  assert.doesNotMatch(html, /阶段依据/);
+  assert.match(enhancements, /\.simulation-panel \{ grid-column: 1; grid-row: 1/);
+  assert.match(enhancements, /\.reasoning-panel \{ grid-column: 1; grid-row: 2/);
+  assert.match(enhancements, /\.output-panel \{ grid-column: 2; grid-row: 1 \/ 3/);
+  assert.match(enhancements, /grid-template-columns: minmax\(82px, \.72fr\) minmax\(0, 1\.28fr\)/);
 });
 
 test("desktop transcript fills available input space and judgment highlights share one color", () => {

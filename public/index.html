@@ -96,6 +96,18 @@
                 <p id="decisionReason">当前没有足够证据支持介入。</p>
                 <div class="follow-up"><span>下一步</span><b id="followUp">继续观察讨论变化</b></div>
               </div>
+              <div id="decisionCycle" class="cycle" aria-label="讨论促进 Agent 决策循环" hidden>
+                <span class="active">观察</span><i>→</i><span>判断</span><i>→</i><span>介入</span><i>→</i><span>反馈</span>
+              </div>
+              <div class="state-block" hidden>
+                <div class="section-label">群体状态</div>
+                <div class="metrics">
+                  <div id="participationState" class="metric-row"><span>参与开放性</span><div id="participationStates" class="state-scale"><i>不开放</i><i>偏不开放</i><i>偏开放</i><i>开放</i></div></div>
+                  <div id="diversityState" class="metric-row"><span>创意发散性</span><div id="diversityStates" class="state-scale"><i>收束</i><i>偏收束</i><i>偏发散</i><i>发散</i></div></div>
+                  <div id="flowState" class="metric-row"><span>讨论流动性</span><div id="flowStates" class="state-scale"><i>停滞</i><i>偏停滞</i><i>偏流动</i><i>流动</i></div></div>
+                </div>
+              </div>
+              <div class="evidence-block"><div class="section-label">可验证依据</div><ul id="evidenceList"><li>加载示例后，决策依据会随时间更新。</li></ul></div>
             </article>
 
             <article class="panel simulation-panel">
@@ -124,22 +136,6 @@
               </div>
             </article>
           </div>
-
-          <article class="panel workflow-panel">
-            <div class="workflow-heading"><span id="workflowTitle" class="section-label">阶段依据</span><strong id="workflowHint">等待阶段路由</strong></div>
-            <div id="decisionCycle" class="cycle" aria-label="讨论促进 Agent 决策循环" hidden>
-              <span class="active">观察</span><i>→</i><span>判断</span><i>→</i><span>介入</span><i>→</i><span>反馈</span>
-            </div>
-            <div class="state-block" hidden>
-              <div class="section-label">群体状态</div>
-              <div class="metrics">
-                <div id="participationState" class="metric-row"><span>参与开放性</span><div id="participationStates" class="state-scale"><i>不开放</i><i>偏不开放</i><i>偏开放</i><i>开放</i></div></div>
-                <div id="diversityState" class="metric-row"><span>创意发散性</span><div id="diversityStates" class="state-scale"><i>收束</i><i>偏收束</i><i>偏发散</i><i>发散</i></div></div>
-                <div id="flowState" class="metric-row"><span>讨论流动性</span><div id="flowStates" class="state-scale"><i>停滞</i><i>偏停滞</i><i>偏流动</i><i>流动</i></div></div>
-              </div>
-            </div>
-            <div class="evidence-block"><div class="section-label">可验证依据</div><ul id="evidenceList"><li>加载示例后，决策依据会随时间更新。</li></ul></div>
-          </article>
         </section>
       </section>
 

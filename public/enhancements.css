@@ -1268,3 +1268,40 @@ body[data-stage="converge"] .pod-section { border-color: #f0bd35; background: li
   .analysis-row { grid-template-columns: 1fr; }
   .analysis-row .output-panel { grid-column: auto; }
 }
+
+/* Final workspace map: MuJoCo spans the former reasoning + simulation width,
+   Agent judgment moves below it, and structured output stays at right. */
+.right-workspace { display: block; }
+.analysis-row { height: 100%; }
+.output-panel .action-grid { display: grid; grid-template-columns: 1fr; gap: 0; border: 1px solid #e5e1d8; border-radius: 13px; overflow: hidden; }
+.output-panel .action { display: grid; grid-template-columns: minmax(82px, .72fr) minmax(0, 1.28fr); align-items: center; gap: 12px; min-height: 38px; padding: 8px 11px; border: 0; border-bottom: 1px solid #e8e4dc; border-radius: 0; }
+.output-panel .action:last-child { border-bottom: 0; }
+.output-panel .action span { color: #8c8982; font-size: 10px; font-weight: 800; text-transform: none; }
+.output-panel .action strong { font-size: 11px; text-align: left; }
+.output-panel .action[data-channel="display"] { grid-template-columns: 1fr; gap: 4px; }
+.output-panel .action[data-channel="display"] strong { font-size: 12px; }
+
+@media (min-width: 1051px) {
+  .analysis-row {
+    grid-template-columns: minmax(650px, 2.15fr) minmax(280px, .85fr);
+    grid-template-rows: minmax(0, 1.38fr) minmax(245px, .82fr);
+  }
+  .simulation-panel { grid-column: 1; grid-row: 1; }
+  .output-panel { grid-column: 2; grid-row: 1 / 3; }
+  .reasoning-panel { grid-column: 1; grid-row: 2; display: grid; grid-template-columns: minmax(350px, 1.12fr) minmax(250px, .88fr); grid-template-rows: auto minmax(0, 1fr); gap: 8px 12px; }
+  .reasoning-panel > .panel-head { grid-column: 1 / -1; }
+  .reasoning-panel .agent-map { grid-column: 1; grid-row: 2; min-height: 0; margin: 0; }
+  .reasoning-panel .decision-card { grid-column: 2; grid-row: 2; align-self: start; margin: 0; }
+  .reasoning-panel .cycle,
+  .reasoning-panel .state-block,
+  .reasoning-panel .evidence-block { grid-column: 2; }
+  .reasoning-panel .cycle { grid-row: 2; align-self: end; margin: 0; }
+  .reasoning-panel .state-block { grid-column: 1 / -1; grid-row: 3; }
+  .reasoning-panel .evidence-block { grid-column: 2; grid-row: 3; }
+  .simulation-panel .mujoco-screen { min-height: 0; }
+}
+
+@media (max-width: 1050px) {
+  .analysis-row { grid-template-columns: 1fr; height: auto; }
+  .simulation-panel, .reasoning-panel, .analysis-row .output-panel { grid-column: auto; }
+}
