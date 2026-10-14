@@ -11,11 +11,13 @@ const VOTE_A = [1, 0.55, 0.08, 1];
 const VOTE_B = [0.10, 0.62, 1, 1];
 const APPROACH_DISTANCE = 0.020;
 const NAVIGATION_DURATION = 3;
+const SPEAKER_NAVIGATION_DURATION = 1.2;
 
 const PODS = [
   [0, 0.040], [-0.046, 0.025], [-0.046, -0.025],
   [0, -0.040], [0.046, -0.025], [0.046, 0.025]
 ];
+const SPEAKER_TO_POD = Object.freeze({ A: 1, B: 5, C: 0, D: 2, E: 3, F: 4 });
 
 const readString = (bytes) => new TextDecoder().decode(bytes);
 
@@ -184,7 +186,8 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
   const demo = {
     mode: "icebreaker", phase: "intro", phaseStarted: performance.now(), selectedPod: null,
     navigation: null, arrivedAt: null, navStarted: null, navStart: null, navTarget: null,
-    navLast: null, navHeight: null, votes: Array(6).fill(null), winner: null, round: 0
+    navLast: null, navHeight: null, votes: Array(6).fill(null), winner: null, round: 0,
+    externalFocus: false, speaker: null
   };
   let frameId = 0;
 
@@ -231,9 +234,29 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     demo.arrivedAt = null;
     demo.votes.fill(null);
     demo.winner = null;
+    demo.externalFocus = false;
+    demo.speaker = null;
     clearNavigation();
   };
-  const setAction = () => {};
+  const focusSpeaker = (speakerId) => {
+    const speaker = String(speakerId || "").trim().toUpperCase();
+    const selectedPod = SPEAKER_TO_POD[speaker];
+    if (!Number.isInteger(selectedPod)) return false;
+    if (demo.externalFocus && demo.speaker === speaker && ["moving", "arrived"].includes(demo.navigation)) return true;
+    demo.mode = "icebreaker";
+    demo.phase = "selected";
+    demo.phaseStarted = performance.now();
+    demo.selectedPod = selectedPod;
+    demo.navigation = "moving";
+    demo.arrivedAt = null;
+    demo.externalFocus = true;
+    demo.speaker = speaker;
+    clearNavigation();
+    return true;
+  };
+  const setAction = (action) => {
+    if (action?.speaker) focusSpeaker(action.speaker);
+  };
   const updateDemoState = (now) => {
     const elapsed = (now - demo.phaseStarted) / 1000;
     if (demo.mode === "icebreaker") {
@@ -247,7 +270,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
         demo.round += 1;
         demo.navigation = "moving";
         clearNavigation();
-      } else if (demo.phase === "selected" && demo.navigation === "arrived" && now - demo.arrivedAt >= 5000) {
+      } else if (demo.phase === "selected" && !demo.externalFocus && demo.navigation === "arrived" && now - demo.arrivedAt >= 5000) {
         demo.phase = "returning";
         demo.phaseStarted = now;
         demo.navigation = "moving";
@@ -258,6 +281,8 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
         demo.phaseStarted = now;
         demo.selectedPod = null;
         demo.navigation = null;
+        demo.externalFocus = false;
+        demo.speaker = null;
         clearNavigation();
       }
     } else if (demo.phase === "open") {
@@ -302,6 +327,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
     if (demo.mode === "icebreaker") {
       if (demo.phase === "intro") label = "破冰启动 · MooTu 发起互动";
       else if (demo.phase === "relay") label = `灯光接力 · Pod ${Math.floor(elapsed / 0.30) % 6 + 1}`;
+      else if (demo.phase === "selected" && demo.externalFocus) label = `${demo.speaker} 正在发言 · ${demo.navigation === "arrived" ? `已到达 Pod ${demo.selectedPod + 1}` : `前往 Pod ${demo.selectedPod + 1}`}`;
       else if (demo.phase === "selected") label = `选中 Pod ${demo.selectedPod + 1} · ${demo.navigation === "arrived" ? "邀请发言" : "靠近参与者"}`;
       else label = "返回中心";
     } else {
@@ -358,7 +384,8 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
       demo.navLast = [...demo.navStart];
       demo.navHeight = Number(data.qpos[freeQpos + 2]);
     }
-    const progress = Math.min(1, (now - demo.navStarted) / (NAVIGATION_DURATION * 1000));
+    const duration = demo.externalFocus ? SPEAKER_NAVIGATION_DURATION : NAVIGATION_DURATION;
+    const progress = Math.min(1, (now - demo.navStarted) / (duration * 1000));
     const eased = smoothstep(progress);
     const [startX, startY, startYaw] = demo.navStart;
     const [targetX, targetY, targetYaw] = demo.navTarget;
@@ -465,6 +492,7 @@ export async function createBrowserMujoco({ canvas, onStatus }) {
   return {
     setAction,
     setScenario,
+    focusSpeaker,
     reset() {
       mujoco.mj_resetData(model, data);
       mujoco.mj_forward(model, data);

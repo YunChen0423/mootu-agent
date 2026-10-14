@@ -143,3 +143,12 @@ test("embodied output reproduces the interaction demo in browser MuJoCo", () => 
   assert.match(app, /dispatchMujocoCommand\(event/);
   assert.doesNotMatch(app, /ws:\/\/127\.0\.0\.1:8765/);
 });
+
+test("the current transcript speaker drives MooTu toward the matching pod", () => {
+  assert.match(app, /function syncMujocoSpeaker/);
+  assert.match(app, /mujocoRuntime\?\.focusSpeaker\(line\.speaker\)/);
+  assert.match(browserMujoco, /SPEAKER_TO_POD = Object\.freeze\(\{ A: 1, B: 5, C: 0/);
+  assert.match(browserMujoco, /const focusSpeaker = \(speakerId\)/);
+  assert.match(browserMujoco, /SPEAKER_NAVIGATION_DURATION = 1\.2/);
+  assert.match(app, /A\/B\/C 对应现场 Pod/);
+});

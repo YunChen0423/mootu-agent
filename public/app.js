@@ -4,7 +4,7 @@ import { createBrowserMujoco } from "./browser-mujoco.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const state = { session: null, config: null, events: [], agentTrace: [], agentExecution: null, time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoRuntime: null, pendingMujocoAction: null, mujocoCommandKey: null };
+const state = { session: null, config: null, events: [], agentTrace: [], agentExecution: null, time: 0, playing: false, timer: null, playbackStartedAt: 0, playbackOrigin: 0, model: "fallback", lastTranscriptKey: null, activeEventIndex: null, transitionTimer: null, liveFlowState: null, liveTranscript: "", liveLines: [], liveInterim: "", liveStartedAt: 0, utteranceCache: new Map(), utteranceRequests: new Set(), activeUtteranceKey: null, agentMemory: [], liveRequestId: 0, analysisRequestId: 0, mujocoRuntime: null, pendingMujocoAction: null, mujocoCommandKey: null, pendingMujocoSpeaker: null, mujocoSpeakerKey: null };
 
 const formatTime = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
@@ -94,6 +94,16 @@ function transcriptAt(time) {
   return state.session.transcript.find((line) => line.start <= time && line.end >= time);
 }
 
+function syncMujocoSpeaker(time) {
+  const line = transcriptAt(time);
+  if (!line?.speaker) return;
+  const key = `${line.speaker}:${line.start}`;
+  if (key === state.mujocoSpeakerKey) return;
+  state.mujocoSpeakerKey = key;
+  state.pendingMujocoSpeaker = line.speaker;
+  state.mujocoRuntime?.focusSpeaker(line.speaker);
+}
+
 function setTime(time) {
   state.time = clamp(Number(time), 0, state.session.duration);
   $("#scrubber").value = state.time;
@@ -104,6 +114,7 @@ function setTime(time) {
   if (state.activeEventIndex != null && eventIndex !== state.activeEventIndex) announceTransition(event, previousEvent);
   state.activeEventIndex = eventIndex;
   renderTranscriptFeed(state.time);
+  syncMujocoSpeaker(state.time);
   renderDecision(event, eventIndex, state.time);
   renderParticipation(state.time);
   $$(".stage-switch button").forEach((button) => button.classList.toggle("active", button.dataset.stage === event.stage));
@@ -142,6 +153,8 @@ function enterLiveSession() {
   state.liveTranscript = "";
   state.liveStartedAt = performance.now();
   state.lastTranscriptKey = null;
+  state.mujocoSpeakerKey = null;
+  state.pendingMujocoSpeaker = null;
   state.activeEventIndex = null;
   state.utteranceCache.clear();
   state.utteranceRequests.clear();
@@ -285,8 +298,9 @@ async function initBrowserMujoco() {
       canvas: $("#mujocoViewport"),
       onStatus: (label) => { $("#mujocoStrategy").textContent = label; }
     });
+    if (state.pendingMujocoSpeaker) state.mujocoRuntime.focusSpeaker(state.pendingMujocoSpeaker);
     $("#mujocoScreen").classList.add("streaming");
-    setMujocoStatus("MooTu 互动演示在线运行", "破冰接力与投票收敛 · 浏览器内计算", true);
+    setMujocoStatus("MooTu 互动演示在线运行", "Agent 发言人驱动 · A/B/C 对应现场 Pod", true);
   } catch (error) {
     setMujocoStatus("MuJoCo 加载失败", "请刷新页面或检查网络", false);
     console.error("MuJoCo WASM initialization failed", error);
