@@ -31,9 +31,9 @@
           <div class="panel-head">
             <div><span class="step">01</span><h2>讨论现场</h2></div>
             <div class="input-actions">
-              <button id="liveBtn" class="live-button" type="button"><i></i>开启现场模式</button>
-              <label class="upload">导入视频<input id="videoInput" type="file" accept="video/*" /></label>
-              <label class="upload transcript-upload">上传逐字稿<input id="transcriptInput" type="file" accept=".json,.txt,application/json,text/plain" /></label>
+              <button id="liveBtn" class="input-icon-button live-button" type="button" aria-label="开启现场模式" title="开启现场模式"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0V5Zm-3 6a6 6 0 0 0 12 0M12 17v4M9 21h6"/></svg><span class="visually-hidden">开启现场模式</span></button>
+              <label class="upload input-icon-button" aria-label="导入视频" title="导入视频"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h12v14H4zM16 10l4-3v10l-4-3z"/></svg><span class="visually-hidden">导入视频</span><input id="videoInput" type="file" accept="video/*" /></label>
+              <label class="upload transcript-upload input-icon-button" aria-label="上传逐字稿" title="上传逐字稿"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7zM14 3v5h4M10 13h5M10 17h5"/></svg><span class="visually-hidden">上传逐字稿</span><input id="transcriptInput" type="file" accept=".json,.txt,application/json,text/plain" /></label>
             </div>
           </div>
           <div class="video-stage">
@@ -81,7 +81,7 @@
                   <div class="node-card" data-owner="icebreaker"><small>可选开场</small><strong>破冰 Workflow</strong><span>静默触发 · 失败可重试</span></div>
                   <div class="parallel-module" data-module="discussion">
                     <em>并行协作</em>
-                    <div class="node-card" data-owner="discussion"><small>讨论主进程</small><strong>讨论促进 Agent</strong><span>发散 ↔ 收敛</span></div>
+                    <div class="node-card" data-owner="discussion"><small>讨论主进程</small><strong>讨论促进 Agent</strong><div class="discussion-stage-tabs" aria-label="讨论阶段"><span data-discussion-stage="diverge">发散</span><span data-discussion-stage="converge">收敛</span></div></div>
                     <b>⇄</b>
                     <div class="node-card" data-owner="synthesis"><small>持续同步</small><strong>方案综合 Agent</strong><span>实时归类关键词</span></div>
                   </div>
@@ -102,9 +102,9 @@
               <div class="state-block" hidden>
                 <div class="section-label">群体状态</div>
                 <div class="metrics">
-                  <div id="participationState" class="metric-row"><span>参与开放性</span><div id="participationStates" class="state-scale"><i>不开放</i><i>偏不开放</i><i>偏开放</i><i>开放</i></div></div>
-                  <div id="diversityState" class="metric-row"><span>创意发散性</span><div id="diversityStates" class="state-scale"><i>收束</i><i>偏收束</i><i>偏发散</i><i>发散</i></div></div>
-                  <div id="flowState" class="metric-row"><span>讨论流动性</span><div id="flowStates" class="state-scale"><i>停滞</i><i>偏停滞</i><i>偏流动</i><i>流动</i></div></div>
+                  <div id="participationState" class="metric-row"><span>参与开放性</span><div id="participationStates" class="state-scale"><i>不开放</i><i>适中</i><i>开放</i></div></div>
+                  <div id="diversityState" class="metric-row"><span>创意发散性</span><div id="diversityStates" class="state-scale"><i>收束</i><i>平衡</i><i>发散</i></div></div>
+                  <div id="flowState" class="metric-row"><span>讨论流动性</span><div id="flowStates" class="state-scale"><i>停滞</i><i>过渡</i><i>流动</i></div></div>
                 </div>
               </div>
             </article>

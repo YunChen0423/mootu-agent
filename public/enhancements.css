@@ -1332,3 +1332,50 @@ body[data-stage="converge"] .pod-section { border-color: #f0bd35; background: li
   .reasoning-panel .route-feedback { min-width: 0; }
   .reasoning-panel .agent-router { width: min(220px, 100%); }
 }
+
+/* Compact controls and judgment details. */
+.input-panel .panel-head { flex-wrap: nowrap; gap: 8px; }
+.input-panel .panel-head > div:first-child { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; }
+.input-panel .panel-head h2 { white-space: nowrap; }
+.input-actions { flex: 0 0 auto; gap: 6px !important; flex-wrap: nowrap !important; }
+.input-icon-button,
+.live-button.input-icon-button {
+  display: inline-grid;
+  flex: 0 0 34px;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #e1ddd3;
+  border-radius: 10px;
+  background: #f5f3ed;
+  color: #775700;
+  cursor: pointer;
+}
+.live-button.input-icon-button { border-color: #292a2d; background: #292a2d; color: #fff; }
+.input-icon-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.live-button.input-icon-button.active { border-color: #a42626; background: #a42626; }
+.transcript-upload { padding-left: 0; border-left: 0; }
+
+.discussion-stage-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-top: 7px; padding: 3px; border-radius: 8px; background: #ece9e1; }
+.discussion-stage-tabs span { padding: 4px 5px; border-radius: 6px; color: #99958c; font-size: 9px; font-weight: 900; text-align: center; }
+.discussion-stage-tabs span.active { color: #674b00; background: #ffdc6d; box-shadow: 0 2px 6px rgba(145,103,0,.14); }
+
+.state-scale { grid-template-columns: repeat(3, 1fr); }
+
+.reasoning-panel .decision-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+.reasoning-panel .decision-card > div:first-child { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.reasoning-panel .decision-card .section-label { flex: 0 0 auto; color: #aaa; }
+.reasoning-panel .decision-card h3 { margin: 0; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.reasoning-panel .decision-card p,
+.reasoning-panel .decision-card .follow-up { display: none; }
+
+.scrubber input { cursor: ew-resize; touch-action: none; }

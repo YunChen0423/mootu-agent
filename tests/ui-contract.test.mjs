@@ -23,9 +23,9 @@ test("nonlinear agent map replaces the redundant top stage strip", () => {
   assert.match(html, /出现新方向：↺ 发散/);
   assert.match(html, /破冰 Workflow/);
   assert.match(html, /投票 Workflow/);
-  assert.match(app, /偏不开放/);
-  assert.match(app, /偏发散/);
-  assert.match(app, /偏流动/);
+  assert.match(html, /data-discussion-stage="diverge"/);
+  assert.match(html, /data-discussion-stage="converge"/);
+  assert.match(app, /tab\.dataset\.discussionStage === blackboard\.discussionStage/);
 });
 
 test("decision card appears before the reasoning cycle", () => {
@@ -61,7 +61,7 @@ test("decision timeline is removed and group state keeps visible alternatives in
 });
 
 test("live mode counts recognized utterances without claiming speaker identity", () => {
-  assert.match(app, /count < 4 \? 2 : 3/);
+  assert.match(app, /count < 4 \? 1 : 2/);
   assert.doesNotMatch(app, /待说话人分离/);
 });
 
@@ -121,8 +121,11 @@ test("desktop transcript fills available input space and judgment highlights sha
   assert.match(enhancements, /\.state-scale i\.active/);
 });
 
-test("judgment uses four-point scales, stage warnings, and no transition popup", () => {
-  assert.match(html, /不开放<\/i><i>偏不开放<\/i><i>偏开放<\/i><i>开放/);
+test("judgment uses three-point scales, stage warnings, and no transition popup", () => {
+  assert.match(html, /不开放<\/i><i>适中<\/i><i>开放/);
+  assert.match(html, /收束<\/i><i>平衡<\/i><i>发散/);
+  assert.match(html, /停滞<\/i><i>过渡<\/i><i>流动/);
+  assert.match(app, /value >= 67 \? 2 : value >= 34 \? 1 : 0/);
   assert.doesNotMatch(html, /时长 70% · 轮次 30%/);
   assert.doesNotMatch(html, /id="transitionNotice"/);
   assert.match(app, /metricTarget/);
@@ -131,6 +134,21 @@ test("judgment uses four-point scales, stage warnings, and no transition popup",
   assert.match(app, /intervening \? "介入" : "不介入"/);
   assert.match(app, /intervening \? "反馈" : "继续观察"/);
   assert.match(enhancements, /\.cycle\.observing-only/);
+});
+
+test("input controls are icon-only on one line and timeline seeking can move backward while playing", () => {
+  assert.match(html, /class="input-icon-button live-button"/);
+  assert.match(html, /aria-label="导入视频"/);
+  assert.match(html, /aria-label="上传逐字稿"/);
+  assert.match(enhancements, /\.input-actions[\s\S]*flex-wrap: nowrap !important/);
+  assert.match(app, /function seekPlayback/);
+  assert.match(app, /state\.playbackOrigin = target/);
+  assert.match(app, /#scrubber"\)\.addEventListener\("input", \(event\) => seekPlayback/);
+});
+
+test("current decision is rendered as one compact line", () => {
+  assert.match(enhancements, /\.reasoning-panel \.decision-card[\s\S]*white-space: nowrap/);
+  assert.match(enhancements, /\.reasoning-panel \.decision-card p,[\s\S]*\.follow-up \{ display: none/);
 });
 
 test("manual reanalysis control is removed", () => {

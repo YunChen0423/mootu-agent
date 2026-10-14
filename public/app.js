@@ -13,6 +13,11 @@ const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => (
 const timelineSpeed = () => state.config?.display?.timeline_speed_multiplier ?? 1;
 const formatPresentationTime = (seconds) => formatTime(seconds / timelineSpeed());
 const discussionTranscript = () => state.session.transcript.filter((line) => line.type === EVENT_TYPES.PARTICIPANT_UTTERANCE);
+const METRIC_LABELS = Object.freeze({
+  participation: ["不开放", "适中", "开放"],
+  diversity: ["收束", "平衡", "发散"],
+  flow: ["停滞", "过渡", "流动"]
+});
 let liveSensing = null;
 
 const MEMBER_LAYOUTS = {
@@ -149,6 +154,7 @@ function setActiveOrchestration(blackboard) {
     node.classList.toggle("monitoring", node.dataset.owner === "router" && activeOwner !== "router");
     if (node.dataset.owner === activeOwner) activeNode = node;
   });
+  $$("[data-discussion-stage]").forEach((tab) => tab.classList.toggle("active", blackboard.phase === SESSION_PHASES.DISCUSSION && tab.dataset.discussionStage === blackboard.discussionStage));
   if (activeNode) requestAnimationFrame(() => {
     const map = $("#agentOrchestration");
     const mapRect = map.getBoundingClientRect();
@@ -180,9 +186,9 @@ function renderProtocolDecision(blackboard, fallbackEvent, eventIndex) {
   $("#decisionTitle").textContent = copy.title;
   $("#decisionReason").textContent = copy.reason;
   $("#followUp").textContent = copy.next;
-  clearMetric("participation", ["不开放", "偏不开放", "偏开放", "开放"]);
-  clearMetric("diversity", ["收束", "偏收束", "偏发散", "发散"]);
-  clearMetric("flow", ["停滞", "偏停滞", "偏流动", "流动"]);
+  clearMetric("participation", METRIC_LABELS.participation);
+  clearMetric("diversity", METRIC_LABELS.diversity);
+  clearMetric("flow", METRIC_LABELS.flow);
   const cycle = $("#decisionCycle");
   ["路由", "校验", blackboard.activeWorkflow ? "工作流" : "Agent", "回写"].forEach((label, index) => { cycle.querySelectorAll("span")[index].textContent = label; });
   cycle.querySelectorAll("span").forEach((step, index) => step.classList.toggle("active", index === (blackboard.phase === SESSION_PHASES.WAITING ? 0 : 2)));
@@ -261,9 +267,9 @@ function enterLiveSession() {
   $("#followUp").textContent = "持续倾听并等待足够证据";
   $("#decisionStatus").textContent = "现场初始化";
   $("#decisionStatus").className = "decision-tag calm";
-  clearMetric("participation", ["不开放", "偏不开放", "偏开放", "开放"]);
-  clearMetric("diversity", ["收束", "偏收束", "偏发散", "发散"]);
-  clearMetric("flow", ["停滞", "偏停滞", "偏流动", "流动"]);
+  clearMetric("participation", METRIC_LABELS.participation);
+  clearMetric("diversity", METRIC_LABELS.diversity);
+  clearMetric("flow", METRIC_LABELS.flow);
   renderDecisionCycle(false, -1);
   renderLiveAction("observe");
 }
@@ -496,13 +502,13 @@ function renderDecision(event, eventIndex, time) {
   renderToolTrace();
   const hasDiscussionEvidence = state.session.transcript.some((line) => line.start <= time && line.type === EVENT_TYPES.PARTICIPANT_UTTERANCE);
   if (hasDiscussionEvidence) {
-    setMetric("participation", event.metrics.participation, ["不开放", "偏不开放", "偏开放", "开放"], event.stage);
-    setMetric("diversity", event.metrics.diversity, ["收束", "偏收束", "偏发散", "发散"], event.stage);
-    setMetric("flow", event.metrics.flow, ["停滞", "偏停滞", "偏流动", "流动"], event.stage);
+    setMetric("participation", event.metrics.participation, METRIC_LABELS.participation, event.stage);
+    setMetric("diversity", event.metrics.diversity, METRIC_LABELS.diversity, event.stage);
+    setMetric("flow", event.metrics.flow, METRIC_LABELS.flow, event.stage);
   } else {
-    clearMetric("participation", ["不开放", "偏不开放", "偏开放", "开放"]);
-    clearMetric("diversity", ["收束", "偏收束", "偏发散", "发散"]);
-    clearMetric("flow", ["停滞", "偏停滞", "偏流动", "流动"]);
+    clearMetric("participation", METRIC_LABELS.participation);
+    clearMetric("diversity", METRIC_LABELS.diversity);
+    clearMetric("flow", METRIC_LABELS.flow);
   }
   const nextTime = state.events[eventIndex + 1]?.time ?? state.session.duration;
   const phaseCount = intervening ? 4 : 2;
@@ -534,8 +540,8 @@ function renderDecision(event, eventIndex, time) {
 }
 
 function metricTarget(name, stage) {
-  if (name === "diversity") return stage === "converge" ? 0 : 3;
-  return 3;
+  if (name === "diversity") return stage === "converge" ? 0 : 2;
+  return 2;
 }
 
 function updateMetricGoal(name, activeIndex, stage, enableWarning = true, showTarget = true) {
@@ -552,7 +558,7 @@ function updateMetricGoal(name, activeIndex, stage, enableWarning = true, showTa
 }
 
 function setMetric(name, value, labels, stage, enableWarning = true) {
-  const stateIndex = value >= 75 ? 3 : value >= 50 ? 2 : value >= 25 ? 1 : 0;
+  const stateIndex = value >= 67 ? 2 : value >= 34 ? 1 : 0;
   $(`#${name}State`).title = `内部判断值 ${value}/100`;
   [...$(`#${name}States`).children].forEach((item, index) => {
     item.textContent = labels[index];
@@ -588,9 +594,9 @@ function clearMetric(name, labels, activeIndex = -1) {
 
 function updateLiveConversationMetrics() {
   const count = state.liveLines.length;
-  const activeIndex = count === 0 ? -1 : count === 1 ? 1 : count < 4 ? 2 : 3;
-  setMetricOptions("participation", ["不开放", "偏不开放", "偏开放", "开放"], activeIndex);
-  setMetricOptions("diversity", ["收束", "偏收束", "偏发散", "发散"], activeIndex);
+  const activeIndex = count === 0 ? -1 : count === 1 ? 0 : count < 4 ? 1 : 2;
+  setMetricOptions("participation", METRIC_LABELS.participation, activeIndex);
+  setMetricOptions("diversity", METRIC_LABELS.diversity, activeIndex);
 }
 
 function announceTransition(event, previousEvent) {
@@ -631,7 +637,7 @@ function renderLiveJudgment(signal) {
     stalled: { value: 22, title: "准备启发讨论", reason: `约 ${Math.round(signal.silenceSeconds)} 秒未确认到讲话内容；背景音不计为发言，已超过停滞观察阈值。`, followUp: "用开放问题测试讨论是否需要新方向", strategy: "open_new_direction" }
   };
   const decision = mapping[liveState];
-  setMetric("flow", decision.value, ["停滞", "偏停滞", "偏流动", "流动"], document.body.dataset.stage || "diverge");
+  setMetric("flow", decision.value, METRIC_LABELS.flow, document.body.dataset.stage || "diverge");
   $("#decisionTitle").textContent = decision.title;
   $("#decisionReason").textContent = decision.reason;
   $("#followUp").textContent = decision.followUp;
@@ -702,7 +708,8 @@ async function stopLiveMode() {
   if (!liveSensing?.active) return;
   await liveSensing.stop();
   $("#liveBtn").classList.remove("active");
-  $("#liveBtn").innerHTML = "<i></i>开启现场模式";
+  $("#liveBtn").setAttribute("aria-label", "开启现场模式");
+  $("#liveBtn").title = "开启现场模式";
   $("#liveSignals").hidden = true;
   $("#playBtn").disabled = false;
   state.liveFlowState = null;
@@ -756,6 +763,19 @@ function togglePlayback() {
   }
 }
 
+function seekPlayback(value) {
+  const target = clamp(Number(value), 0, state.session.duration);
+  setTime(target);
+  if ($("#video").hasAttribute("src")) {
+    $("#video").currentTime = target;
+    return;
+  }
+  if (state.playing) {
+    state.playbackOrigin = target;
+    state.playbackStartedAt = performance.now();
+  }
+}
+
 function toast(message) {
   $("#toast").textContent = message;
   $("#toast").classList.add("show");
@@ -763,7 +783,7 @@ function toast(message) {
 }
 
 $("#playBtn").addEventListener("click", togglePlayback);
-$("#scrubber").addEventListener("input", (event) => setTime(event.target.value));
+$("#scrubber").addEventListener("input", (event) => seekPlayback(event.target.value));
 $("#liveBtn").addEventListener("click", async () => {
   if (!liveSensing) {
     liveSensing = createLiveSensing({
@@ -793,7 +813,8 @@ $("#liveBtn").addEventListener("click", async () => {
     $("#videoPlaceholder").hidden = true;
     $("#liveSignals").hidden = false;
     $("#liveBtn").classList.add("active");
-    $("#liveBtn").innerHTML = "<i></i>结束现场模式";
+    $("#liveBtn").setAttribute("aria-label", "结束现场模式");
+    $("#liveBtn").title = "结束现场模式";
     $("#playBtn").disabled = true;
     state.liveFlowState = null;
     $("#liveTranscript").textContent = "正在倾听…";
